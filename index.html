@@ -1,0 +1,2236 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>居家照護：哈姆立克法急救訓練模擬器</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js r128 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- Google Fonts: Noto Sans TC -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet" />
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #fef9f2;
+      color: #1e293b;
+    }
+
+    /* Gentle Amber Shake Animation for Wrong Answer */
+    @keyframes gentleShake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-6px); }
+      40% { transform: translateX(6px); }
+      60% { transform: translateX(-4px); }
+      80% { transform: translateX(4px); }
+    }
+    .animate-gentle-shake {
+      animation: gentleShake 0.4s ease-in-out;
+    }
+
+    /* Subtle Pulse for Learning Mode Hint */
+    @keyframes softPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45); }
+      50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+    }
+    .learning-highlight {
+      border-color: #10b981 !important;
+      background-color: #ecfdf5 !important;
+      animation: softPulse 2s infinite;
+    }
+
+    /* Speech Bubble Float */
+    @keyframes floatBubble {
+      0%, 100% { transform: translate(-50%, 0px); }
+      50% { transform: translate(-50%, -6px); }
+    }
+    .bubble-float {
+      animation: floatBubble 2.2s ease-in-out infinite;
+    }
+
+    /* Floating +1 Tap Feedback Pop */
+    @keyframes popFloatUp {
+      0% { opacity: 0; transform: translate(-50%, 10px) scale(0.75); }
+      20% { opacity: 1; transform: translate(-50%, -8px) scale(1.1); }
+      80% { opacity: 1; transform: translate(-50%, -32px) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -48px) scale(0.95); }
+    }
+    .animate-tap-pop {
+      animation: popFloatUp 0.85s ease-out forwards;
+    }
+
+    /* Custom Scrollbar for Right Panel */
+    .custom-scroll::-webkit-scrollbar {
+      width: 8px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 8px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 8px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    /* Tactile 3D-like Button */
+    .btn-tactile {
+      transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.2s ease;
+    }
+    .btn-tactile:active:not(:disabled) {
+      transform: translateY(3px);
+    }
+  </style>
+</head>
+<body class="flex flex-col md:flex-row w-screen h-screen overflow-hidden bg-amber-50">
+
+  <!-- ==================== LEFT 70%: 3D SCENE VIEWPORT ==================== -->
+  <div id="viewport-container" class="relative w-full md:w-[70%] h-[48%] md:h-full bg-gradient-to-b from-amber-100 to-orange-50 overflow-hidden border-b-4 md:border-b-0 md:border-r-4 border-amber-200">
+    <!-- Three.js Canvas Mount -->
+    <div id="three-canvas-wrapper" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
+
+    <!-- Top-Left Scenario Badge & Camera Hint -->
+    <div class="absolute top-3 left-3 z-10 flex flex-col gap-2 pointer-events-none max-w-[60%]">
+      <div class="bg-white/95 backdrop-blur-sm border-2 border-amber-300 rounded-2xl px-4 py-2 shadow-md">
+        <div class="flex items-center gap-2">
+          <span id="hud-case-badge" class="bg-teal-600 text-white text-sm md:text-base font-bold px-2.5 py-0.5 rounded-xl">第 1 / 3 位個案</span>
+          <span id="hud-mode-badge" class="bg-amber-100 text-amber-900 text-sm md:text-base font-bold px-2.5 py-0.5 rounded-xl border border-amber-300">學習模式</span>
+        </div>
+        <p id="hud-scenario-title" class="text-base md:text-lg font-black text-slate-800 mt-1">情境：客廳吃湯圓噎到</p>
+      </div>
+
+      <div id="hud-timer-box" class="hidden bg-white/90 backdrop-blur-sm border-2 border-sky-300 rounded-2xl px-3.5 py-1.5 shadow-sm w-fit">
+        <span class="text-sm md:text-base font-bold text-sky-900">⏱️ 練習計時：<span id="hud-timer-text">00:00</span></span>
+      </div>
+    </div>
+
+    <!-- Top-Right Floating Utility Buttons -->
+    <div class="absolute top-3 right-3 z-20 flex flex-wrap justify-end gap-2">
+      <button id="btn-open-sop" type="button" class="btn-tactile min-h-[56px] px-3.5 md:px-4 py-2 bg-white/95 hover:bg-sky-50 text-slate-800 border-2 border-sky-400 rounded-2xl shadow-md font-bold text-base md:text-lg flex items-center gap-1.5">
+        <span>📋</span>
+        <span>急救步驟圖卡</span>
+      </button>
+      <button id="btn-toggle-audio" type="button" class="btn-tactile min-h-[56px] px-3.5 md:px-4 py-2 bg-white/95 hover:bg-emerald-50 text-slate-800 border-2 border-emerald-400 rounded-2xl shadow-md font-bold text-base md:text-lg flex items-center gap-1.5">
+        <span id="audio-icon">🔊</span>
+        <span id="audio-label">語音開啟</span>
+      </button>
+      <button id="btn-open-home" type="button" class="btn-tactile min-h-[56px] px-3.5 md:px-4 py-2 bg-white/95 hover:bg-rose-50 text-slate-800 border-2 border-rose-300 rounded-2xl shadow-md font-bold text-base md:text-lg flex items-center gap-1.5">
+        <span>🏠</span>
+        <span>回首頁</span>
+      </button>
+    </div>
+
+    <!-- Dynamic 3D Overlay Speech Bubble / Visual Cue Banner -->
+    <div id="scene-speech-bubble" class="bubble-float absolute top-[22%] md:top-[20%] left-1/2 z-10 pointer-events-none bg-white/95 border-4 border-rose-500 rounded-3xl px-5 py-2.5 shadow-xl text-center max-w-[88%]">
+      <p id="scene-bubble-text" class="text-lg md:text-2xl font-black text-rose-600 tracking-wide">咳不出來…救命…</p>
+    </div>
+
+    <!-- 3D Direct-Tap Floating Pop Feedback (+1 拍！ / +1 壓！) -->
+    <div id="scene-tap-pop-container" class="pointer-events-none absolute inset-0 z-20 overflow-hidden"></div>
+
+    <!-- 3D Direct Body Tap Instruction Pill (Shown during Step 1 & Step 5 action phase) -->
+    <div id="scene-direct-tap-hint" class="hidden absolute top-[35%] md:top-[33%] left-1/2 -translate-x-1/2 z-10 pointer-events-none bg-emerald-600/95 text-white border-2 border-white rounded-2xl px-4 py-1.5 shadow-lg text-center max-w-[90%]">
+      <p id="scene-direct-tap-text" class="text-sm md:text-base font-black tracking-wide">👆 可直接點擊畫面中個案的「背部」或按右側按鈕</p>
+    </div>
+
+    <!-- Bottom-Left Camera Angle Preset Buttons -->
+    <div class="absolute bottom-3 left-3 z-10 flex items-center gap-2 bg-white/85 backdrop-blur-sm p-1.5 rounded-2xl border-2 border-amber-200 shadow-md">
+      <span class="text-xs md:text-sm font-bold text-slate-600 px-2 hidden sm:inline">🎥 視角：</span>
+      <button type="button" data-cam="overview" class="cam-preset-btn min-h-[44px] px-3 py-1 rounded-xl bg-amber-500 text-white font-bold text-sm md:text-base shadow-sm">全景</button>
+      <button type="button" data-cam="back" class="cam-preset-btn min-h-[44px] px-3 py-1 rounded-xl bg-white text-slate-700 hover:bg-amber-100 font-bold text-sm md:text-base">背後站姿</button>
+      <button type="button" data-cam="abdomen" class="cam-preset-btn min-h-[44px] px-3 py-1 rounded-xl bg-white text-slate-700 hover:bg-amber-100 font-bold text-sm md:text-base">腹部手勢</button>
+    </div>
+
+    <!-- 3D Action Counter Floating Badge (for Step 1 & Step 5) -->
+    <div id="scene-counter-pill" class="hidden absolute bottom-3 right-3 z-10 bg-teal-600 text-white border-4 border-white rounded-3xl px-5 py-2.5 shadow-xl">
+      <p id="scene-counter-text" class="text-xl md:text-2xl font-black">拍背進度：0 / 5 下</p>
+    </div>
+  </div>
+
+  <!-- ==================== RIGHT 30%: TASK ANALYSIS CONTROL PANEL ==================== -->
+  <div class="w-full md:w-[30%] h-[52%] md:h-full bg-white flex flex-col justify-between overflow-hidden">
+    <!-- Top Horizontal Step Progress Pill Bar -->
+    <header class="bg-slate-50 border-b-2 border-slate-200 px-3 md:px-4 py-3 shrink-0">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm md:text-base font-bold text-slate-600">哈姆立克法 6 步驟任務進度</span>
+        <span id="step-fraction-badge" class="text-sm md:text-base font-black text-teal-700 bg-teal-100 px-3 py-0.5 rounded-full">步驟 1 / 6</span>
+      </div>
+      <div id="step-pill-bar" class="grid grid-cols-6 gap-1.5 md:gap-2">
+        <!-- Pills rendered by JS -->
+      </div>
+    </header>
+
+    <!-- Main Scrollable Step Instruction & Interaction Area -->
+    <main id="task-panel-body" class="flex-1 overflow-y-auto custom-scroll p-4 md:p-5 flex flex-col gap-3.5">
+      <!-- Step Header + TTS Replay Button -->
+      <div class="flex items-start justify-between gap-2.5 bg-teal-50 border-2 border-teal-200 rounded-3xl p-3.5">
+        <div>
+          <span id="step-tag" class="inline-block bg-teal-600 text-white text-sm md:text-base font-bold px-3 py-1 rounded-xl mb-1.5">步驟 1</span>
+          <h2 id="step-title" class="text-lg md:text-xl font-black text-slate-900 leading-snug">拍背 5 下，鼓勵個案咳出來</h2>
+        </div>
+        <button id="btn-replay-tts" type="button" class="btn-tactile shrink-0 min-h-[56px] min-w-[56px] px-3 py-2 bg-amber-400 hover:bg-amber-300 text-slate-900 border-2 border-amber-600 rounded-2xl shadow-md font-black text-sm md:text-base flex flex-col items-center justify-center">
+          <span class="text-xl">🔊</span>
+          <span class="text-xs">重聽題目</span>
+        </button>
+      </div>
+
+      <!-- Scaffolding Strategy Hint Box (Visible in Learning Mode or after gentle error in Practice Mode) -->
+      <div id="strategy-hint-box" class="bg-amber-50 border-2 border-amber-400 rounded-2xl p-3.5 flex items-start gap-3">
+        <span class="text-2xl shrink-0">💡</span>
+        <div>
+          <p class="text-sm font-black text-amber-800">照護小口訣與提示</p>
+          <p id="strategy-hint-text" class="text-base md:text-lg font-bold text-slate-800 mt-0.5 leading-relaxed">個案意識清楚但咳不出來時，請他身體前傾，用掌根在兩肩胛骨中間用力拍背 5 下！</p>
+        </div>
+      </div>
+
+      <!-- Question Prompt -->
+      <div class="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4">
+        <p id="step-question-text" class="text-lg md:text-xl font-bold text-slate-800 leading-relaxed">
+          請問看到個案用手抓脖子、咳不出聲音時，第一步該怎麼做？
+        </p>
+      </div>
+
+      <!-- Interactive Choices Container -->
+      <div id="choices-container" class="flex flex-col gap-3">
+        <!-- Option buttons injected dynamically -->
+      </div>
+
+      <!-- Interactive Repeated Action Zone (For Step 1 Back Blows & Step 5 Abdominal Thrusts) -->
+      <div id="action-counter-zone" class="hidden flex-col gap-3 bg-emerald-50 border-2 border-emerald-400 rounded-3xl p-4">
+        <div class="flex items-center justify-between">
+          <span id="action-zone-label" class="text-lg md:text-xl font-black text-emerald-900">請連續點擊下方按鈕執行拍背</span>
+          <span id="action-zone-count" class="text-xl md:text-2xl font-black text-emerald-700 bg-white px-3.5 py-1 rounded-2xl border-2 border-emerald-300">0 / 5</span>
+        </div>
+        <!-- Visual 5-dot progress -->
+        <div id="action-dots-row" class="flex items-center justify-center gap-3 py-1">
+          <!-- Dots rendered by JS -->
+        </div>
+        <button id="btn-perform-action" type="button" class="btn-tactile min-h-[68px] w-full bg-emerald-600 hover:bg-emerald-500 text-white border-b-4 border-emerald-800 rounded-2xl shadow-lg font-black text-xl md:text-2xl flex items-center justify-center gap-3">
+          <span id="action-btn-icon" class="text-2xl md:text-3xl">👋</span>
+          <span id="action-btn-text">拍背 1 下（目前 0 / 5 下）</span>
+        </button>
+      </div>
+
+      <!-- Gentle Feedback Banner -->
+      <div id="feedback-banner" class="hidden rounded-2xl p-4 border-2 font-bold text-base md:text-lg flex items-center gap-3">
+        <span id="feedback-icon" class="text-2xl shrink-0">🌟</span>
+        <p id="feedback-text" class="leading-snug">做得很好！繼續下一步。</p>
+      </div>
+    </main>
+
+    <!-- Bottom Next Step Footer -->
+    <footer class="bg-slate-50 border-t-2 border-slate-200 px-4 py-3 shrink-0">
+      <button id="btn-next-step" type="button" disabled class="btn-tactile min-h-[60px] w-full rounded-2xl font-black text-lg md:text-xl shadow-md transition-all bg-slate-300 text-slate-500 cursor-not-allowed flex items-center justify-center gap-2">
+        <span id="next-step-btn-text">請先完成本步驟操作</span>
+        <span>➡️</span>
+      </button>
+    </footer>
+  </div>
+
+  <!-- ==================== MODAL 1: TITLE & TEACHER SETTINGS OVERLAY ==================== -->
+  <div id="start-overlay" class="fixed inset-0 z-50 bg-amber-950/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white border-4 border-amber-400 rounded-3xl max-w-2xl w-full p-6 md:p-8 shadow-2xl my-auto">
+      <div class="text-center mb-6">
+        <div class="inline-flex items-center gap-2 bg-teal-100 text-teal-800 font-black px-4 py-1.5 rounded-full text-base md:text-lg mb-3">
+          <span>🏥</span>
+          <span>高職特教居家照護實作課程</span>
+        </div>
+        <h1 class="text-2xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight">
+          居家照護：哈姆立克法<br class="sm:hidden" />急救訓練模擬器
+        </h1>
+        <p class="text-base md:text-lg font-bold text-slate-600 mt-2">
+          學會「拍背 5 下」與「腹部按壓 5 次」，冷靜幫助噎到的長輩吐出異物！
+        </p>
+      </div>
+
+      <!-- Mode Selection Cards -->
+      <div class="mb-5">
+        <p class="text-base md:text-lg font-black text-slate-800 mb-2.5">1. 選擇練習模式：</p>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <button type="button" data-mode="learning" class="mode-select-btn btn-tactile min-h-[76px] p-3.5 rounded-2xl border-4 border-teal-500 bg-teal-50 text-left flex flex-col justify-center">
+            <span class="text-lg md:text-xl font-black text-teal-900">🌱 學習模式</span>
+            <span class="text-sm font-bold text-teal-700 mt-0.5">有口訣提示與綠框引導</span>
+          </button>
+          <button type="button" data-mode="practice" class="mode-select-btn btn-tactile min-h-[76px] p-3.5 rounded-2xl border-2 border-slate-300 bg-white hover:bg-slate-50 text-left flex flex-col justify-center">
+            <span class="text-lg md:text-xl font-black text-slate-800">🌿 練習模式</span>
+            <span class="text-sm font-bold text-slate-600 mt-0.5">先自己想，答錯再給提示</span>
+          </button>
+          <button type="button" data-mode="challenge" class="mode-select-btn btn-tactile min-h-[76px] p-3.5 rounded-2xl border-2 border-slate-300 bg-white hover:bg-slate-50 text-left flex flex-col justify-center">
+            <span class="text-lg md:text-xl font-black text-slate-800">🏆 挑戰模式</span>
+            <span class="text-sm font-bold text-slate-600 mt-0.5">選項隨機排列並記錄時間</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Collapsible Teacher Settings -->
+      <div class="mb-6 border-2 border-slate-200 rounded-2xl overflow-hidden bg-slate-50">
+        <button id="btn-toggle-teacher-settings" type="button" class="w-full min-h-[56px] px-4 py-3 flex items-center justify-between font-black text-base md:text-lg text-slate-700 hover:bg-slate-100">
+          <span class="flex items-center gap-2">
+            <span id="teacher-arrow">▶</span>
+            <span>老師設定（個案數量與操作次數調整）</span>
+          </span>
+          <span id="teacher-summary-tag" class="text-sm font-bold text-teal-700 bg-teal-100 px-2.5 py-1 rounded-xl">3 位個案 / 標準 5 下</span>
+        </button>
+
+        <div id="teacher-settings-drawer" class="hidden px-4 pb-4 pt-2 border-t border-slate-200 space-y-4">
+          <!-- Cases per session -->
+          <div>
+            <p class="text-sm md:text-base font-black text-slate-700 mb-2">每次練習個案數：</p>
+            <div class="grid grid-cols-3 gap-2.5">
+              <button type="button" data-cases="1" class="cases-select-btn min-h-[56px] rounded-xl border-2 border-slate-300 bg-white font-bold text-base md:text-lg text-slate-700">1 位個案</button>
+              <button type="button" data-cases="3" class="cases-select-btn min-h-[56px] rounded-xl border-4 border-teal-500 bg-teal-50 font-black text-base md:text-lg text-teal-900">3 位個案</button>
+              <button type="button" data-cases="5" class="cases-select-btn min-h-[56px] rounded-xl border-2 border-slate-300 bg-white font-bold text-base md:text-lg text-slate-700">5 位個案</button>
+            </div>
+          </div>
+
+          <!-- Action repetitions (Motor adaptation) -->
+          <div>
+            <p class="text-sm md:text-base font-black text-slate-700 mb-2">動作次數調整（手部肌力適應）：</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <button type="button" data-reps="5" class="reps-select-btn min-h-[56px] px-3 rounded-xl border-4 border-teal-500 bg-teal-50 font-black text-base text-teal-900">標準完整操作（拍背 5 下＋按壓 5 次）</button>
+              <button type="button" data-reps="3" class="reps-select-btn min-h-[56px] px-3 rounded-xl border-2 border-slate-300 bg-white font-bold text-base text-slate-700">簡化示範操作（拍背 3 下＋按壓 3 次）</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Start Game Button -->
+      <button id="btn-start-game" type="button" class="btn-tactile min-h-[68px] w-full bg-teal-600 hover:bg-teal-500 text-white border-b-4 border-teal-800 rounded-2xl shadow-xl font-black text-2xl flex items-center justify-center gap-3">
+        <span>🚑</span>
+        <span>開始居家急救訓練</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 2: SOP REFERENCE CARD MODAL ==================== -->
+  <div id="sop-modal" class="hidden fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border-4 border-sky-400 rounded-3xl max-w-2xl w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="bg-sky-50 px-6 py-4 border-b-2 border-sky-200 flex items-center justify-between">
+        <h3 class="text-xl md:text-2xl font-black text-sky-950">📋 居家照護：哈姆立克法 6 步驟圖卡</h3>
+        <button id="btn-close-sop" type="button" class="btn-tactile min-h-[56px] min-w-[56px] bg-white border-2 border-slate-300 rounded-2xl font-black text-xl text-slate-700">✖</button>
+      </div>
+      <div class="p-5 overflow-y-auto custom-scroll space-y-3">
+        <div class="flex items-center gap-3.5 bg-amber-50 border-2 border-amber-200 rounded-2xl p-3.5">
+          <span class="text-3xl">1️⃣</span>
+          <div>
+            <p class="font-black text-lg text-slate-900">拍背 5 下，鼓勵個案咳出來</p>
+            <p class="text-base font-bold text-slate-600">請個案身體前傾，用掌根在兩肩胛骨之間用力拍擊 5 下。</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3.5 bg-sky-50 border-2 border-sky-200 rounded-2xl p-3.5">
+          <span class="text-3xl">2️⃣</span>
+          <div>
+            <p class="font-black text-lg text-slate-900">操作者站在個案背後，腳呈現弓箭步</p>
+            <p class="text-base font-bold text-slate-600">前腳跨入個案兩腳中間站穩，支撐個案身體重心。</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3.5 bg-teal-50 border-2 border-teal-200 rounded-2xl p-3.5">
+          <span class="text-3xl">3️⃣</span>
+          <div>
+            <p class="font-black text-lg text-slate-900">右手握拳，虎口朝內放在肚臍上方兩指處</p>
+            <p class="text-base font-bold text-slate-600">避免壓到胸骨尖端或肚臍下方，確保位置準確。</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3.5 bg-emerald-50 border-2 border-emerald-200 rounded-2xl p-3.5">
+          <span class="text-3xl">4️⃣</span>
+          <div>
+            <p class="font-black text-lg text-slate-900">操作者左手握住右手</p>
+            <p class="text-base font-bold text-slate-600">左手緊緊包覆右手拳頭，雙手合力準備施力。</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3.5 bg-orange-50 border-2 border-orange-200 rounded-2xl p-3.5">
+          <span class="text-3xl">5️⃣</span>
+          <div>
+            <p class="font-black text-lg text-slate-900">操作者快速朝內朝上按壓</p>
+            <p class="text-base font-bold text-slate-600">連續快速向內、向上推擠橫膈膜 5 次，利用氣流衝出異物。</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3.5 bg-rose-50 border-2 border-rose-200 rounded-2xl p-3.5">
+          <span class="text-3xl">6️⃣</span>
+          <div>
+            <p class="font-black text-lg text-slate-900">個案將異物吐出，確認呼吸並安撫</p>
+            <p class="text-base font-bold text-slate-600">異物吐出後讓個案坐下休息，確認呼吸順暢並關懷安撫。</p>
+          </div>
+        </div>
+      </div>
+      <div class="p-4 bg-slate-50 border-t-2 border-slate-200">
+        <button id="btn-close-sop-bottom" type="button" class="btn-tactile min-h-[56px] w-full bg-sky-600 text-white rounded-2xl font-black text-xl">我知道了，繼續練習</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 3: RETURN HOME CONFIRMATION ==================== -->
+  <div id="home-confirm-modal" class="hidden fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border-4 border-rose-300 rounded-3xl max-w-md w-full p-6 shadow-2xl text-center">
+      <div class="text-5xl mb-3">🏠</div>
+      <h3 class="text-2xl font-black text-slate-900">確定要回到首頁嗎？</h3>
+      <p class="text-base md:text-lg font-bold text-slate-600 mt-2 mb-6">目前的個案練習進度將會重新開始喔！</p>
+      <div class="grid grid-cols-2 gap-3">
+        <button id="btn-cancel-home" type="button" class="btn-tactile min-h-[56px] bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-2xl font-black text-lg">繼續練習</button>
+        <button id="btn-confirm-home" type="button" class="btn-tactile min-h-[56px] bg-rose-600 hover:bg-rose-500 text-white rounded-2xl font-black text-lg">回到首頁</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 4: CASE / SESSION SUMMARY MODAL ==================== -->
+  <div id="summary-modal" class="hidden fixed inset-0 z-50 bg-teal-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border-4 border-amber-400 rounded-3xl max-w-lg w-full p-6 md:p-8 shadow-2xl text-center">
+      <div class="text-6xl mb-3">🎉🌟</div>
+      <h3 id="summary-title" class="text-2xl md:text-3xl font-black text-slate-900">太棒了！成功救回個案！</h3>
+      <p id="summary-desc" class="text-lg font-bold text-slate-600 mt-2">
+        你正確完成了拍背 5 下與哈姆立克法腹部按壓，個案已經順利吐出異物並恢復順暢呼吸！
+      </p>
+
+      <div class="my-5 bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 space-y-2">
+        <div class="flex justify-center gap-2 text-3xl">
+          <span>⭐</span><span>⭐</span><span>⭐</span>
+        </div>
+        <p id="summary-stats" class="text-base md:text-lg font-black text-amber-900">完成進度：第 1 / 3 位個案</p>
+      </div>
+
+      <button id="btn-summary-next" type="button" class="btn-tactile min-h-[64px] w-full bg-teal-600 hover:bg-teal-500 text-white border-b-4 border-teal-800 rounded-2xl shadow-lg font-black text-xl md:text-2xl">
+        下一位居家個案 ➡️
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== JAVASCRIPT LOGIC & 3D ENGINE ==================== -->
+  <script>
+    (function () {
+      'use strict';
+
+      /* ----------------------------------------------------------------------
+       * 1. GAME STATE & CONFIGURATION
+       * ---------------------------------------------------------------------- */
+      const SCENARIOS = [
+        {
+          id: 'tangyuan',
+          title: '情境：客廳吃湯圓噎到',
+          foodName: '白色大湯圓',
+          foodColor: 0xf8fafc,
+          recipientName: '陳爺爺',
+          shirtColor: 0x3b82f6,
+          speech: '咳不出來…救命…',
+          introTTS: '陳爺爺在客廳吃湯圓時噎到了，雙手抓著脖子咳不出聲音。請你趕快協助急救！'
+        },
+        {
+          id: 'meatball',
+          title: '情境：餐廳吃貢丸噎到',
+          foodName: '彈牙貢丸',
+          foodColor: 0xb45309,
+          recipientName: '林奶奶',
+          shirtColor: 0xec4899,
+          speech: '唔…喉嚨卡住了…',
+          introTTS: '林奶奶在餐廳喝湯吃貢丸時噎到了，表情痛苦無法說話。請立刻進行哈姆立克法！'
+        },
+        {
+          id: 'mochi',
+          title: '情境：客廳吃麻糬噎到',
+          foodName: '花生麻糬',
+          foodColor: 0xfde68a,
+          recipientName: '王伯伯',
+          shirtColor: 0x10b981,
+          speech: '咳…吸不到氣…',
+          introTTS: '王伯伯吃麻糬點心時噎到了，意識清醒但無法呼吸。請依照步驟幫助他！'
+        },
+        {
+          id: 'jelly',
+          title: '情境：午後吃果凍噎到',
+          foodName: '水果果凍',
+          foodColor: 0xfb7185,
+          recipientName: '張阿姨',
+          shirtColor: 0x8b5cf6,
+          speech: '咳不出來…幫幫我…',
+          introTTS: '張阿姨吃果凍時不小心噎住喉嚨，請冷靜執行居家照護急救步驟！'
+        },
+        {
+          id: 'bun',
+          title: '情境：早餐吃包子噎到',
+          foodName: '肉包塊',
+          foodColor: 0xfef3c7,
+          recipientName: '李爺爺',
+          shirtColor: 0x0ea5e9,
+          speech: '唔…卡在喉嚨…',
+          introTTS: '李爺爺早餐吃包子時噎到了，雙手握住脖子求救。請趕快過去幫忙！'
+        }
+      ];
+
+      const STATE = {
+        mode: 'learning', // 'learning' | 'practice' | 'challenge'
+        totalCases: 3,
+        requiredReps: 5, // 5 (standard) or 3 (simplified)
+        currentCaseIndex: 0,
+        currentStep: 1, // 1 to 6
+        stepCompleted: false,
+        actionCount: 0,
+        audioEnabled: true,
+        isProcessing: false,
+        lastClickTime: 0,
+        timerSeconds: 0,
+        timerInterval: null,
+        sessionStarted: false
+      };
+
+      /* ----------------------------------------------------------------------
+       * 2. WEB AUDIO API (WARM CHIMES & NO HARSH BUZZERS) & WEB SPEECH (zh-TW)
+       * ---------------------------------------------------------------------- */
+      let audioCtx = null;
+
+      function ensureAudioContext() {
+        if (!audioCtx) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) {
+            audioCtx = new AudioContextClass();
+          }
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+      }
+
+      function playTone(freq, duration = 0.25, type = 'sine', gainVal = 0.18, delay = 0) {
+        if (!STATE.audioEnabled) return;
+        try {
+          ensureAudioContext();
+          if (!audioCtx) return;
+          const now = audioCtx.currentTime + delay;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, now);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.exponentialRampToValueAtTime(gainVal, now + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now);
+          osc.stop(now + duration + 0.03);
+        } catch (e) {
+          // Ignore audio errors on restricted devices
+        }
+      }
+
+      function playChimeSuccess() {
+        playTone(523.25, 0.22, 'sine', 0.16, 0);     // C5
+        playTone(659.25, 0.28, 'sine', 0.16, 0.11);  // E5
+        playTone(783.99, 0.35, 'sine', 0.18, 0.22);  // G5
+      }
+
+      function playChimeAction(count, max) {
+        const baseFreq = 440 + (count / max) * 220;
+        playTone(baseFreq, 0.18, 'triangle', 0.2, 0);
+        // Add a crisp warm percussive tap layer
+        playTone(190 + count * 18, 0.09, 'sine', 0.22, 0);
+      }
+
+      function playChimeGentleRetry() {
+        // Warm low wooden marimba-like soft double tap (never harsh buzzer)
+        playTone(293.66, 0.2, 'sine', 0.14, 0);     // D4
+        playTone(261.63, 0.26, 'sine', 0.14, 0.14);  // C4
+      }
+
+      function playChimeCelebration() {
+        const notes = [523.25, 659.25, 783.99, 1046.5];
+        notes.forEach((n, idx) => {
+          playTone(n, 0.35, 'sine', 0.18, idx * 0.12);
+        });
+      }
+
+      function speakTW(text, interrupt = true) {
+        if (!STATE.audioEnabled) return;
+        if (!('speechSynthesis' in window)) return;
+        try {
+          if (interrupt) {
+            window.speechSynthesis.cancel();
+          }
+          const utter = new SpeechSynthesisUtterance(text);
+          utter.lang = 'zh-TW';
+          utter.rate = 0.95; // Slightly slower & clearer for special education students
+          utter.pitch = 1.05;
+          const voices = window.speechSynthesis.getVoices();
+          const twVoice = voices.find(v => v.lang.includes('zh-TW')) || voices.find(v => v.lang.includes('zh'));
+          if (twVoice) utter.voice = twVoice;
+          window.speechSynthesis.speak(utter);
+        } catch (e) {
+          // Ignore TTS errors
+        }
+      }
+
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.onvoiceschanged = () => {
+          window.speechSynthesis.getVoices();
+        };
+      }
+
+      /* ----------------------------------------------------------------------
+       * 3. ANTI-MASH DEBOUNCE GUARD (350ms)
+       * ---------------------------------------------------------------------- */
+      function canInteract() {
+        const now = Date.now();
+        if (STATE.isProcessing || now - STATE.lastClickTime < 350) {
+          return false;
+        }
+        STATE.lastClickTime = now;
+        return true;
+      }
+
+      /* ----------------------------------------------------------------------
+       * 4. STEP DEFINITIONS (DYNAMICALLY ADAPTED TO requiredReps)
+       * ---------------------------------------------------------------------- */
+      function getStepConfig(stepNum) {
+        const reps = STATE.requiredReps;
+        const scenario = SCENARIOS[STATE.currentCaseIndex % SCENARIOS.length];
+
+        switch (stepNum) {
+          case 1:
+            return {
+              step: 1,
+              title: `拍背 ${reps} 下，鼓勵個案咳出來`,
+              hint: `口訣：身體前傾、掌根拍背！請個案身體往前傾，用掌根在兩肩胛骨中間用力拍背 ${reps} 下，同時大聲鼓勵他用力咳出來。`,
+              question: `看到${scenario.recipientName}雙手抓脖子、咳不出聲音時，第一步要先拍哪裡、拍幾下？`,
+              speechBubble: scenario.speech,
+              bubbleType: 'danger',
+              camPreset: 'overview',
+              options: [
+                { id: 's1_correct', label: `👋 兩肩胛骨中間，用力拍背 ${reps} 下`, correct: true },
+                { id: 's1_wrong1', label: '🥤 趕快倒一大杯開水給個案喝', correct: false, retryHint: '噎到時喝水容易嗆進氣管更危險喔！請先拍背幫助咳出異物。' },
+                { id: 's1_wrong2', label: '🛌 請個案立刻平躺在地板上', correct: false, retryHint: '意識清楚時要讓個案站著或坐著身體前傾，才容易把異物咳出來喔！' }
+              ],
+              hasCounterAction: true,
+              actionLabel: `請點擊按鈕執行「拍背」並鼓勵用力咳出來！`,
+              actionBtnIcon: '👋',
+              actionBtnVerb: '拍背 1 下',
+              actionUnit: '下',
+              ttsPrompt: `步驟一，拍背${reps}下，鼓勵個案咳出來。請問第一步要先拍哪裡、拍幾下？`
+            };
+
+          case 2:
+            return {
+              step: 2,
+              title: '操作者站在個案背後，腳呈現弓箭步',
+              hint: '口訣：站背後、弓箭步！操作者站在個案正後方，一隻腳往前跨進個案兩腳中間，呈現穩固的弓箭步。',
+              question: `拍背 ${reps} 下後異物還沒出來，操作者應該站在哪裡？雙腳要擺成什麼姿勢？`,
+              speechBubble: '還是咳不出來…',
+              bubbleType: 'danger',
+              camPreset: 'back',
+              options: [
+                { id: 's2_correct', label: '🧍‍♂️ 站在個案背後，雙腳呈現弓箭步', correct: true },
+                { id: 's2_wrong1', label: '🧍 站在個案正面，雙腳併攏站直', correct: false, retryHint: '要站在個案「背後」才能從後方環抱腹部，而且雙腳要呈弓箭步才站得穩喔！' },
+                { id: 's2_wrong2', label: '🧎 蹲在個案旁邊，拉著他的手臂', correct: false, retryHint: '拉手臂沒辦法擠壓腹部氣流喔！請站在個案背後並採弓箭步。' }
+              ],
+              hasCounterAction: false,
+              ttsPrompt: '步驟二，操作者站在個案背後，腳呈現弓箭步。請問操作者應該站在哪裡，雙腳擺成什麼姿勢？'
+            };
+
+          case 3:
+            return {
+              step: 3,
+              title: '操作者右手握拳，虎口朝內放在肚臍上方兩指處',
+              hint: '口訣：肚臍上兩指、握拳虎口朝內！右手握拳，讓大拇指與食指的「虎口」朝內貼住肚臍上方兩橫指的位置。',
+              question: '接下來右手要握拳，請問「虎口朝向哪裡」？要放在身體的哪個位置？',
+              speechBubble: '準備腹部按壓位置',
+              bubbleType: 'info',
+              camPreset: 'abdomen',
+              options: [
+                { id: 's3_correct', label: '✊ 虎口朝內，放在「肚臍上方兩指處」', correct: true },
+                { id: 's3_wrong1', label: '✊ 拳眼朝外，放在「胸口正中央骨頭上」', correct: false, retryHint: '壓胸骨容易造成骨頭受傷，虎口也要朝內貼緊肚臍上方兩指處喔！' },
+                { id: 's3_wrong2', label: '🖐️ 手掌張開，放在「肚臍最下方」', correct: false, retryHint: '要用握拳的姿勢，位置在肚臍「上方」兩指處才有效喔！' }
+              ],
+              hasCounterAction: false,
+              ttsPrompt: '步驟三，操作者右手握拳，虎口朝內放在肚臍上方兩指處。請問右手拳頭要放在哪個位置？'
+            };
+
+          case 4:
+            return {
+              step: 4,
+              title: '操作者左手握住右手',
+              hint: '口訣：左手包右手！右手拳頭放好位置後，左手從外側緊緊包覆握住右手拳頭，準備一起用力。',
+              question: '右手握拳放在肚臍上方兩指處之後，左手要做什麼動作？',
+              speechBubble: '雙手扣緊準備施力',
+              bubbleType: 'info',
+              camPreset: 'abdomen',
+              options: [
+                { id: 's4_correct', label: '🤲 左手緊緊包覆握住右手拳頭', correct: true },
+                { id: 's4_wrong1', label: '👋 左手放在個案肩膀上輕輕拍打', correct: false, retryHint: '現在要準備腹部按壓囉！請用左手緊緊握住右手拳頭，兩手一起出力。' },
+                { id: 's4_wrong2', label: '👇 左手垂放在自己大腿旁邊', correct: false, retryHint: '單手力氣不夠喔！請用左手包覆握住右手拳頭。' }
+              ],
+              hasCounterAction: false,
+              ttsPrompt: '步驟四，操作者左手握住右手。請問左手接下來要做什麼動作？'
+            };
+
+          case 5:
+            return {
+              step: 5,
+              title: `操作者快速朝內朝上按壓`,
+              hint: `口訣：朝內、朝上、快速按壓！雙手握緊後，快速向內、向上推擠橫膈膜 ${reps} 次，把卡住的異物頂出來。`,
+              question: '雙手握緊後，要朝哪個方向快速按壓個案的腹部？',
+              speechBubble: '用力朝內朝上按壓！',
+              bubbleType: 'warning',
+              camPreset: 'abdomen',
+              options: [
+                { id: 's5_correct', label: '⬆️ 快速「朝內、朝上」用力按壓', correct: true },
+                { id: 's5_wrong1', label: '⬇️ 慢慢「朝下」用力往下壓', correct: false, retryHint: '朝下壓沒辦法把異物往上推喔！要快速「朝內、朝上」按壓。' },
+                { id: 's5_wrong2', label: '↔️ 抱著個案「左右輕輕搖晃」', correct: false, retryHint: '左右搖晃無法產生向上氣流喔！請快速朝內、朝上按壓。' }
+              ],
+              hasCounterAction: true,
+              actionLabel: `請連續點擊按鈕執行「快速朝內朝上按壓」！`,
+              actionBtnIcon: '💪',
+              actionBtnVerb: '朝內朝上按壓 1 次',
+              actionUnit: '次',
+              ttsPrompt: '步驟五，操作者快速朝內朝上按壓。請問要朝哪個方向快速按壓？'
+            };
+
+          case 6:
+          default:
+            return {
+              step: 6,
+              title: '個案將異物吐出，確認呼吸並安撫',
+              hint: '口訣：吐出異物、確認呼吸！太好了，異物已經吐出來了！請確認個案呼吸順暢，並安撫他坐下休息。',
+              question: `${scenario.recipientName}已經把${scenario.foodName}吐出來了！最後我們要完成哪一項照護確認？`,
+              speechBubble: '咳出來了！謝謝你！',
+              bubbleType: 'success',
+              camPreset: 'overview',
+              options: [
+                { id: 's6_correct', label: '🗣️ 確認個案呼吸順暢，並安撫坐下休息', correct: true },
+                { id: 's6_wrong1', label: '🍽️ 立刻再拿一顆給個案繼續吃', correct: false, retryHint: '剛噎到完喉嚨還很不舒服喔！要先確認呼吸順暢並休息。' },
+                { id: 's6_wrong2', label: '🏃 直接轉身離開不理會個案', correct: false, retryHint: '居家照護員要留下來確認個案呼吸順暢並給予安撫喔！' }
+              ],
+              hasCounterAction: false,
+              ttsPrompt: '步驟六，個案將異物吐出。最後請選擇正確的照護確認動作！'
+            };
+        }
+      }
+
+      /* ----------------------------------------------------------------------
+       * 5. THREE.JS 3D SCENE & CHARACTER ARTICULATION
+       * ---------------------------------------------------------------------- */
+      let scene, camera, renderer;
+      let caregiverGroup, caregiverTorso, caregiverHead, caregiverLeftArm, caregiverRightArm, caregiverLeftLeg, caregiverRightLeg;
+      let recipientGroup, recipientTorso, recipientHead, recipientLeftArm, recipientRightArm;
+      let warningRingMesh, targetAbdomenRing, upwardArrowGroup, footGuideGroup, bolusMesh;
+      let backImpactRing, celebrationGroup;
+      let backTargetGlowRing, backHitBoxMesh, abdomenHitBoxMesh;
+      let raycaster = new THREE.Raycaster();
+      let pointerNDC = new THREE.Vector2();
+      let pointerDownPos = { x: 0, y: 0 };
+      let isHoveringTarget = false;
+      let clock = new THREE.Clock();
+
+      // Animation Targets
+      const animState = {
+        camPos: new THREE.Vector3(2.8, 2.3, 3.6),
+        camLook: new THREE.Vector3(0, 1.15, 0),
+        caregiverPos: new THREE.Vector3(-1.1, 0, 0.4),
+        caregiverRotY: 0.4,
+        recipientLean: 0.08,
+        backBlowPulse: 0,
+        thrustPulse: 0,
+        bolusExpelled: false,
+        bolusTime: 0,
+        handsOnAbdomen: false,
+        leftHandLocked: false,
+        lungeStance: false
+      };
+
+      // Camera Drag Orbit State
+      let isDraggingCam = false;
+      let prevMouseX = 0;
+      let prevMouseY = 0;
+      let userYawOffset = 0;
+      let userPitchOffset = 0;
+
+      function initThreeScene() {
+        const container = document.getElementById('three-canvas-wrapper');
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xfef3c7);
+        scene.fog = new THREE.Fog(0xfef3c7, 8, 18);
+
+        const width = container.clientWidth || 600;
+        const height = container.clientHeight || 400;
+        camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 50);
+        camera.position.copy(animState.camPos);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.innerHTML = '';
+        container.appendChild(renderer.domElement);
+
+        // Warm Home Lighting
+        const hemiLight = new THREE.HemisphereLight(0xfffbeb, 0xd97706, 0.85);
+        hemiLight.position.set(0, 6, 0);
+        scene.add(hemiLight);
+
+        const dirLight = new THREE.DirectionalLight(0xfff7ed, 0.95);
+        dirLight.position.set(3.5, 6, 4);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        scene.add(dirLight);
+
+        buildTaiwanHomeEnvironment();
+        buildCharacters();
+        buildVisualGuides();
+
+        // ResizeObserver for clean responsive scaling
+        if ('ResizeObserver' in window) {
+          const ro = new ResizeObserver(() => {
+            handleResize();
+          });
+          ro.observe(container);
+        } else {
+          window.addEventListener('resize', handleResize);
+        }
+
+        // Mouse & Touch Orbit Controls on 3D Viewport
+        const dom = renderer.domElement;
+        dom.addEventListener('mousedown', (e) => {
+          isDraggingCam = true;
+          prevMouseX = e.clientX;
+          prevMouseY = e.clientY;
+          pointerDownPos = { x: e.clientX, y: e.clientY };
+        });
+        window.addEventListener('mouseup', (e) => {
+          if (isDraggingCam && e && typeof e.clientX === 'number') {
+            const moveDist = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+            if (moveDist < 10) {
+              tryDirectBodyTap(e.clientX, e.clientY);
+            }
+          }
+          isDraggingCam = false;
+        });
+        window.addEventListener('mousemove', (e) => {
+          updateBodyHoverCursor(e.clientX, e.clientY);
+          if (!isDraggingCam) return;
+          const dx = e.clientX - prevMouseX;
+          const dy = e.clientY - prevMouseY;
+          prevMouseX = e.clientX;
+          prevMouseY = e.clientY;
+          userYawOffset = Math.max(-1.4, Math.min(1.4, userYawOffset - dx * 0.008));
+          userPitchOffset = Math.max(-0.4, Math.min(0.6, userPitchOffset + dy * 0.006));
+        });
+
+        dom.addEventListener('touchstart', (e) => {
+          if (e.touches.length === 1) {
+            isDraggingCam = true;
+            prevMouseX = e.touches[0].clientX;
+            prevMouseY = e.touches[0].clientY;
+            pointerDownPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+          }
+        }, { passive: true });
+        dom.addEventListener('touchmove', (e) => {
+          if (!isDraggingCam || e.touches.length !== 1) return;
+          const dx = e.touches[0].clientX - prevMouseX;
+          const dy = e.touches[0].clientY - prevMouseY;
+          prevMouseX = e.touches[0].clientX;
+          prevMouseY = e.touches[0].clientY;
+          userYawOffset = Math.max(-1.4, Math.min(1.4, userYawOffset - dx * 0.009));
+          userPitchOffset = Math.max(-0.4, Math.min(0.6, userPitchOffset + dy * 0.007));
+        }, { passive: true });
+        dom.addEventListener('touchend', (e) => {
+          if (isDraggingCam && e.changedTouches && e.changedTouches.length === 1) {
+            const touch = e.changedTouches[0];
+            const moveDist = Math.hypot(touch.clientX - pointerDownPos.x, touch.clientY - pointerDownPos.y);
+            if (moveDist < 14) {
+              tryDirectBodyTap(touch.clientX, touch.clientY);
+            }
+          }
+          isDraggingCam = false;
+        });
+      }
+
+      function handleResize() {
+        const container = document.getElementById('three-canvas-wrapper');
+        if (!container || !renderer || !camera) return;
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        if (w === 0 || h === 0) return;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      }
+
+      function buildTaiwanHomeEnvironment() {
+        // Wooden Floor
+        const floorGeo = new THREE.PlaneGeometry(14, 14);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0xdeb887, roughness: 0.75 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // Soft Woven Living Room Rug
+        const rugGeo = new THREE.CylinderGeometry(2.2, 2.2, 0.02, 32);
+        const rugMat = new THREE.MeshStandardMaterial({ color: 0xfde68a, roughness: 0.9 });
+        const rug = new THREE.Mesh(rugGeo, rugMat);
+        rug.position.set(0, 0.01, 0);
+        rug.receiveShadow = true;
+        scene.add(rug);
+
+        // Back & Side Cream Walls
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0xfffbeb, roughness: 0.9 });
+        const backWall = new THREE.Mesh(new THREE.BoxGeometry(14, 5, 0.2), wallMat);
+        backWall.position.set(0, 2.5, -3.5);
+        scene.add(backWall);
+
+        const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.2, 5, 14), wallMat);
+        leftWall.position.set(-4.2, 2.5, 0);
+        scene.add(leftWall);
+
+        // Bright Taiwanese Window on Back Wall
+        const windowFrame = new THREE.Mesh(
+          new THREE.BoxGeometry(2.2, 1.5, 0.25),
+          new THREE.MeshStandardMaterial({ color: 0x92400e })
+        );
+        windowFrame.position.set(-1.2, 2.1, -3.45);
+        scene.add(windowFrame);
+
+        const windowGlass = new THREE.Mesh(
+          new THREE.PlaneGeometry(1.95, 1.25),
+          new THREE.MeshBasicMaterial({ color: 0xbae6fd })
+        );
+        windowGlass.position.set(-1.2, 2.1, -3.31);
+        scene.add(windowGlass);
+
+        // Dining Table (Moved slightly right-front so characters are crystal clear)
+        const tableGroup = new THREE.Group();
+        tableGroup.position.set(1.55, 0, -0.85);
+        const tableTop = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.85, 0.85, 0.08, 24),
+          new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.6 })
+        );
+        tableTop.position.y = 0.78;
+        tableTop.castShadow = true;
+        tableTop.receiveShadow = true;
+        tableGroup.add(tableTop);
+
+        const tableLeg = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.1, 0.14, 0.78, 16),
+          new THREE.MeshStandardMaterial({ color: 0x78350f })
+        );
+        tableLeg.position.y = 0.39;
+        tableLeg.castShadow = true;
+        tableGroup.add(tableLeg);
+
+        const tableBase = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.4, 0.4, 0.05, 20),
+          new THREE.MeshStandardMaterial({ color: 0x78350f })
+        );
+        tableBase.position.y = 0.025;
+        tableGroup.add(tableBase);
+
+        // Ceramic Bowl & Chopsticks on Table
+        const bowl = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.18, 0.1, 0.11, 20),
+          new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 })
+        );
+        bowl.position.set(-0.2, 0.87, 0.15);
+        tableGroup.add(bowl);
+
+        const teaCup = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.06, 0.05, 0.11, 16),
+          new THREE.MeshStandardMaterial({ color: 0x0d9488 })
+        );
+        teaCup.position.set(0.18, 0.87, 0.22);
+        tableGroup.add(teaCup);
+
+        scene.add(tableGroup);
+
+        // Potted Indoor Plant in Corner
+        const pot = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.24, 0.18, 0.35, 16),
+          new THREE.MeshStandardMaterial({ color: 0xd97706 })
+        );
+        pot.position.set(-3.2, 0.175, -2.6);
+        scene.add(pot);
+
+        const foliage = new THREE.Mesh(
+          new THREE.DodecahedronGeometry(0.42, 1),
+          new THREE.MeshStandardMaterial({ color: 0x16a34a })
+        );
+        foliage.position.set(-3.2, 0.62, -2.6);
+        scene.add(foliage);
+      }
+
+      function buildCharacters() {
+        const skinMat = new THREE.MeshStandardMaterial({ color: 0xfcd5b5, roughness: 0.6 });
+        const pantsMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
+        const shoeMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.7 });
+
+        /* --- 1. CARE RECIPIENT (個案 - Elderly Resident facing +Z / slightly +X) --- */
+        recipientGroup = new THREE.Group();
+        recipientGroup.position.set(0.15, 0, 0);
+        scene.add(recipientGroup);
+
+        // Legs (Standing slightly apart)
+        const rLeftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.075, 0.82, 12), pantsMat);
+        rLeftLeg.position.set(-0.14, 0.41, 0);
+        rLeftLeg.castShadow = true;
+        recipientGroup.add(rLeftLeg);
+
+        const rRightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.075, 0.82, 12), pantsMat);
+        rRightLeg.position.set(0.14, 0.41, 0);
+        rRightLeg.castShadow = true;
+        recipientGroup.add(rRightLeg);
+
+        // Shoes
+        const rLeftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.08, 0.24), shoeMat);
+        rLeftShoe.position.set(-0.14, 0.04, 0.04);
+        recipientGroup.add(rLeftShoe);
+
+        const rRightShoe = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.08, 0.24), shoeMat);
+        rRightShoe.position.set(0.14, 0.04, 0.04);
+        recipientGroup.add(rRightShoe);
+
+        // Torso Pivot at Hip (y = 0.82)
+        recipientTorso = new THREE.Group();
+        recipientTorso.position.set(0, 0.82, 0);
+        recipientGroup.add(recipientTorso);
+
+        const rShirtMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.7 });
+        const rBodyMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.19, 0.62, 16), rShirtMat);
+        rBodyMesh.position.y = 0.31;
+        rBodyMesh.castShadow = true;
+        rBodyMesh.name = 'recipientShirtMesh';
+        recipientTorso.add(rBodyMesh);
+
+        // Head
+        recipientHead = new THREE.Group();
+        recipientHead.position.set(0, 0.74, 0);
+        recipientTorso.add(recipientHead);
+
+        const rHeadMesh = new THREE.Mesh(new THREE.SphereGeometry(0.17, 20, 20), skinMat);
+        rHeadMesh.castShadow = true;
+        recipientHead.add(rHeadMesh);
+
+        // Silver/Gray Hair Cap
+        const hairMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.8 });
+        const rHair = new THREE.Mesh(new THREE.SphereGeometry(0.175, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat);
+        rHair.rotation.x = -0.25;
+        recipientHead.add(rHair);
+
+        // Eyes
+        const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+        const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8), eyeMat);
+        eyeL.position.set(-0.055, 0.02, 0.155);
+        recipientHead.add(eyeL);
+        const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8), eyeMat);
+        eyeR.position.set(0.055, 0.02, 0.155);
+        recipientHead.add(eyeR);
+
+        // Arms (Initially clutching throat!)
+        recipientLeftArm = new THREE.Group();
+        recipientLeftArm.position.set(-0.24, 0.54, 0);
+        recipientTorso.add(recipientLeftArm);
+        const rArmMeshL = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.44, 12), rShirtMat);
+        rArmMeshL.position.set(0.08, -0.05, 0.16);
+        rArmMeshL.rotation.set(1.1, 0, -0.75);
+        rArmMeshL.name = 'recipientArmMeshL';
+        recipientLeftArm.add(rArmMeshL);
+
+        recipientRightArm = new THREE.Group();
+        recipientRightArm.position.set(0.24, 0.54, 0);
+        recipientTorso.add(recipientRightArm);
+        const rArmMeshR = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.44, 12), rShirtMat);
+        rArmMeshR.position.set(-0.08, -0.05, 0.16);
+        rArmMeshR.rotation.set(1.1, 0, 0.75);
+        rArmMeshR.name = 'recipientArmMeshR';
+        recipientRightArm.add(rArmMeshR);
+
+        /* --- 2. CAREGIVER / OPERATOR (操作者 - Home-care Teal Uniform Vest) --- */
+        caregiverGroup = new THREE.Group();
+        caregiverGroup.position.copy(animState.caregiverPos);
+        scene.add(caregiverGroup);
+
+        const cgPantsMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
+
+        // Left Leg Pivot
+        caregiverLeftLeg = new THREE.Group();
+        caregiverLeftLeg.position.set(-0.12, 0.84, 0);
+        caregiverGroup.add(caregiverLeftLeg);
+        const cgLegL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.84, 12), cgPantsMat);
+        cgLegL.position.y = -0.42;
+        cgLegL.castShadow = true;
+        caregiverLeftLeg.add(cgLegL);
+        const cgShoeL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.24), shoeMat);
+        cgShoeL.position.set(0, -0.8, 0.04);
+        caregiverLeftLeg.add(cgShoeL);
+
+        // Right Leg Pivot
+        caregiverRightLeg = new THREE.Group();
+        caregiverRightLeg.position.set(0.12, 0.84, 0);
+        caregiverGroup.add(caregiverRightLeg);
+        const cgLegR = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.84, 12), cgPantsMat);
+        cgLegR.position.y = -0.42;
+        cgLegR.castShadow = true;
+        caregiverRightLeg.add(cgLegR);
+        const cgShoeR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.24), shoeMat);
+        cgShoeR.position.set(0, -0.8, 0.04);
+        caregiverRightLeg.add(cgShoeR);
+
+        // Caregiver Torso
+        caregiverTorso = new THREE.Group();
+        caregiverTorso.position.set(0, 0.84, 0);
+        caregiverGroup.add(caregiverTorso);
+
+        const vestMat = new THREE.MeshStandardMaterial({ color: 0x0d9488, roughness: 0.6 }); // Home-care teal vest
+        const cgBody = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.17, 0.62, 16), vestMat);
+        cgBody.position.y = 0.31;
+        cgBody.castShadow = true;
+        caregiverTorso.add(cgBody);
+
+        // White Polo Collar Accent
+        const collar = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.12, 0.14, 0.08, 16),
+          new THREE.MeshStandardMaterial({ color: 0xffffff })
+        );
+        collar.position.y = 0.62;
+        caregiverTorso.add(collar);
+
+        // Caregiver Head
+        caregiverHead = new THREE.Group();
+        caregiverHead.position.set(0, 0.75, 0);
+        caregiverTorso.add(caregiverHead);
+
+        const cgHeadMesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 20), skinMat);
+        cgHeadMesh.castShadow = true;
+        caregiverHead.add(cgHeadMesh);
+
+        const darkHairMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
+        const cgHair = new THREE.Mesh(new THREE.SphereGeometry(0.165, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.55), darkHairMat);
+        cgHair.rotation.x = -0.25;
+        caregiverHead.add(cgHair);
+
+        // Caregiver Arms (Articulated for Back Blows & Heimlich Wrap)
+        const sleeveMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
+
+        caregiverRightArm = new THREE.Group();
+        caregiverRightArm.position.set(0.24, 0.54, 0);
+        caregiverTorso.add(caregiverRightArm);
+
+        // Upper Arm
+        const cgUpperArmR = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.36, 12), sleeveMat);
+        cgUpperArmR.position.set(0, -0.18, 0);
+        caregiverRightArm.add(cgUpperArmR);
+
+        // Elbow + Forearm Pivot for realistic wrap-around hug
+        const cgRightForearm = new THREE.Group();
+        cgRightForearm.position.set(0, -0.36, 0);
+        cgRightForearm.name = 'rightForearm';
+        caregiverRightArm.add(cgRightForearm);
+
+        const cgForearmMeshR = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.38, 12), sleeveMat);
+        cgForearmMeshR.position.set(0, -0.18, 0);
+        cgRightForearm.add(cgForearmMeshR);
+
+        // Right Fist (Thumb-side / 虎口 highlighted inward)
+        const rightFist = new THREE.Mesh(new THREE.SphereGeometry(0.072, 16, 16), skinMat);
+        rightFist.position.set(0, -0.38, 0);
+        rightFist.name = 'rightFist';
+        cgRightForearm.add(rightFist);
+
+        // Thumb-side (虎口) Ring Marker facing inward toward abdomen
+        const thumbSideMarker = new THREE.Mesh(
+          new THREE.TorusGeometry(0.048, 0.013, 10, 20),
+          new THREE.MeshBasicMaterial({ color: 0xf59e0b })
+        );
+        thumbSideMarker.position.set(0, -0.38, -0.04);
+        cgRightForearm.add(thumbSideMarker);
+
+        caregiverLeftArm = new THREE.Group();
+        caregiverLeftArm.position.set(-0.24, 0.54, 0);
+        caregiverTorso.add(caregiverLeftArm);
+
+        // Upper Arm
+        const cgUpperArmL = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.36, 12), sleeveMat);
+        cgUpperArmL.position.set(0, -0.18, 0);
+        caregiverLeftArm.add(cgUpperArmL);
+
+        // Elbow + Forearm Pivot
+        const cgLeftForearm = new THREE.Group();
+        cgLeftForearm.position.set(0, -0.36, 0);
+        cgLeftForearm.name = 'leftForearm';
+        caregiverLeftArm.add(cgLeftForearm);
+
+        const cgForearmMeshL = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.38, 12), sleeveMat);
+        cgForearmMeshL.position.set(0, -0.18, 0);
+        cgLeftForearm.add(cgForearmMeshL);
+
+        // Left Hand wrapping over Right Fist
+        const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 16), skinMat);
+        leftHand.position.set(0, -0.39, 0.03);
+        leftHand.name = 'leftHand';
+        cgLeftForearm.add(leftHand);
+      }
+
+      function buildVisualGuides() {
+        // 1. Gentle Flashing Warning Ring around Recipient
+        warningRingMesh = new THREE.Mesh(
+          new THREE.RingGeometry(0.45, 0.56, 32),
+          new THREE.MeshBasicMaterial({ color: 0xf43f5e, side: THREE.DoubleSide, transparent: true, opacity: 0.75 })
+        );
+        warningRingMesh.rotation.x = -Math.PI / 2;
+        warningRingMesh.position.set(0.15, 0.03, 0);
+        scene.add(warningRingMesh);
+
+        // 2. Back Impact Wave Ring (Step 1)
+        backImpactRing = new THREE.Mesh(
+          new THREE.RingGeometry(0.08, 0.22, 24),
+          new THREE.MeshBasicMaterial({ color: 0xf59e0b, side: THREE.DoubleSide, transparent: true, opacity: 0 })
+        );
+        backImpactRing.position.set(0.15, 1.32, -0.24);
+        scene.add(backImpactRing);
+
+        // 2b. Direct-Tap Glowing Target Ring & Forgiving Hit-Box on Recipient's Upper Back (Step 1)
+        backTargetGlowRing = new THREE.Mesh(
+          new THREE.RingGeometry(0.07, 0.145, 28),
+          new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })
+        );
+        backTargetGlowRing.position.set(0, 0.42, -0.225);
+        backTargetGlowRing.rotation.x = -0.15;
+        backTargetGlowRing.visible = false;
+        recipientTorso.add(backTargetGlowRing);
+
+        backHitBoxMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(0.68, 0.72, 0.52),
+          new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.0, depthWrite: false })
+        );
+        backHitBoxMesh.position.set(0, 0.38, -0.14);
+        backHitBoxMesh.name = 'backHitBox';
+        recipientTorso.add(backHitBoxMesh);
+
+        // 2c. Direct-Tap Forgiving Hit-Box on Recipient's Upper Abdomen / Clasped Hands (Step 5)
+        abdomenHitBoxMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(0.68, 0.65, 0.62),
+          new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 0.0, depthWrite: false })
+        );
+        abdomenHitBoxMesh.position.set(0, 0.24, 0.16);
+        abdomenHitBoxMesh.name = 'abdomenHitBox';
+        recipientTorso.add(abdomenHitBoxMesh);
+
+        // 3. Glowing Lunge Stance Footprint Guides (Step 2)
+        footGuideGroup = new THREE.Group();
+        footGuideGroup.visible = false;
+        const fpMat = new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.85 });
+        const frontFoot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.3), fpMat);
+        frontFoot.position.set(0.15, 0.025, -0.05); // Front foot planted between recipient's feet
+        const backFoot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.3), fpMat);
+        backFoot.position.set(0.28, 0.025, -0.58); // Back foot braced
+        backFoot.rotation.y = -0.35;
+        footGuideGroup.add(frontFoot, backFoot);
+        scene.add(footGuideGroup);
+
+        // 4. Glowing Target Marker at Two Fingers Above Navel (Step 3 & 4)
+        targetAbdomenRing = new THREE.Mesh(
+          new THREE.RingGeometry(0.05, 0.1, 24),
+          new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })
+        );
+        targetAbdomenRing.position.set(0.15, 1.05, 0.225);
+        targetAbdomenRing.visible = false;
+        scene.add(targetAbdomenRing);
+
+        // 5. 3D Upward & Inward Thrust Arrow Indicator (Step 5)
+        upwardArrowGroup = new THREE.Group();
+        upwardArrowGroup.position.set(0.15, 1.08, 0.36);
+        upwardArrowGroup.visible = false;
+        const arrowMat = new THREE.MeshBasicMaterial({ color: 0xf97316 });
+        const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.22, 12), arrowMat);
+        const head = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.12, 16), arrowMat);
+        head.position.y = 0.16;
+        upwardArrowGroup.add(shaft, head);
+        upwardArrowGroup.rotation.x = -0.35; // Angled inward & upward
+        scene.add(upwardArrowGroup);
+
+        // 6. Food Bolus (異物 - Expelled in Step 6)
+        bolusMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.048, 16, 16),
+          new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 })
+        );
+        bolusMesh.visible = false;
+        scene.add(bolusMesh);
+
+        // 7. Celebration Star Particles (Step 6)
+        celebrationGroup = new THREE.Group();
+        celebrationGroup.visible = false;
+        const starColors = [0xfbbf24, 0x34d399, 0x60a5fa, 0xf472b6];
+        for (let i = 0; i < 12; i++) {
+          const star = new THREE.Mesh(
+            new THREE.OctahedronGeometry(0.05, 0),
+            new THREE.MeshBasicMaterial({ color: starColors[i % starColors.length] })
+          );
+          const angle = (i / 12) * Math.PI * 2;
+          star.position.set(0.15 + Math.cos(angle) * 0.45, 1.65 + (i % 3) * 0.12, Math.sin(angle) * 0.45);
+          celebrationGroup.add(star);
+        }
+        scene.add(celebrationGroup);
+      }
+
+      /* ----------------------------------------------------------------------
+       * 6. UPDATE 3D SCENE POSE & CAMERA FOR EACH STEP
+       * ---------------------------------------------------------------------- */
+      function setCameraPreset(presetName) {
+        userYawOffset = 0;
+        userPitchOffset = 0;
+
+        document.querySelectorAll('.cam-preset-btn').forEach(btn => {
+          const active = btn.dataset.cam === presetName;
+          btn.className = active
+            ? 'cam-preset-btn min-h-[44px] px-3 py-1 rounded-xl bg-amber-500 text-white font-bold text-sm md:text-base shadow-sm'
+            : 'cam-preset-btn min-h-[44px] px-3 py-1 rounded-xl bg-white text-slate-700 hover:bg-amber-100 font-bold text-sm md:text-base';
+        });
+
+        if (presetName === 'back') {
+          animState.camPos.set(-1.35, 1.35, -1.35);
+          animState.camLook.set(0.15, 0.55, -0.25);
+        } else if (presetName === 'abdomen') {
+          animState.camPos.set(1.15, 1.25, 1.15);
+          animState.camLook.set(0.15, 1.05, 0.08);
+        } else {
+          animState.camPos.set(2.3, 2.05, 2.75);
+          animState.camLook.set(0.15, 1.1, 0);
+        }
+      }
+
+      function applyScenarioVisuals() {
+        const scenario = SCENARIOS[STATE.currentCaseIndex % SCENARIOS.length];
+        if (!recipientTorso || !bolusMesh) return;
+
+        const shirtMesh = recipientTorso.getObjectByName('recipientShirtMesh');
+        const armL = recipientTorso.getObjectByName('recipientArmMeshL');
+        const armR = recipientTorso.getObjectByName('recipientArmMeshR');
+        if (shirtMesh) shirtMesh.material.color.setHex(scenario.shirtColor);
+        if (armL) armL.material.color.setHex(scenario.shirtColor);
+        if (armR) armR.material.color.setHex(scenario.shirtColor);
+        bolusMesh.material.color.setHex(scenario.foodColor);
+      }
+
+      function sync3DToStep(stepNum, completed) {
+        // Reset guide visibilities
+        footGuideGroup.visible = false;
+        targetAbdomenRing.visible = false;
+        upwardArrowGroup.visible = false;
+        celebrationGroup.visible = false;
+        if (backTargetGlowRing) backTargetGlowRing.visible = false;
+        warningRingMesh.visible = stepNum < 6;
+
+        if (stepNum === 1) {
+          // Step 1: Recipient leans forward; caregiver stands behind-left ready to pat back
+          animState.recipientLean = 0.34;
+          animState.caregiverPos.set(-0.42, 0, -0.45);
+          animState.caregiverRotY = 0.55;
+          animState.lungeStance = false;
+          animState.handsOnAbdomen = false;
+          animState.leftHandLocked = false;
+          animState.bolusExpelled = false;
+          bolusMesh.visible = false;
+          if (backTargetGlowRing) backTargetGlowRing.visible = !completed;
+        } else if (stepNum === 2) {
+          // Step 2: Caregiver steps directly behind recipient in lunge stance (弓箭步)
+          animState.recipientLean = 0.1;
+          animState.caregiverPos.set(0.15, 0, -0.34);
+          animState.caregiverRotY = 0;
+          animState.lungeStance = completed;
+          footGuideGroup.visible = true;
+          animState.handsOnAbdomen = false;
+          animState.leftHandLocked = false;
+        } else if (stepNum === 3) {
+          // Step 3: Right fist thumb-side inward placed 2 fingers above navel
+          animState.recipientLean = 0.08;
+          animState.caregiverPos.set(0.15, 0, -0.32);
+          animState.caregiverRotY = 0;
+          animState.lungeStance = true;
+          targetAbdomenRing.visible = true;
+          animState.handsOnAbdomen = completed;
+          animState.leftHandLocked = false;
+        } else if (stepNum === 4) {
+          // Step 4: Left hand wraps firmly over right fist
+          animState.recipientLean = 0.08;
+          animState.caregiverPos.set(0.15, 0, -0.32);
+          animState.caregiverRotY = 0;
+          animState.lungeStance = true;
+          targetAbdomenRing.visible = true;
+          animState.handsOnAbdomen = true;
+          animState.leftHandLocked = completed;
+        } else if (stepNum === 5) {
+          // Step 5: Inward and upward abdominal thrusts
+          animState.recipientLean = 0.08;
+          animState.caregiverPos.set(0.15, 0, -0.32);
+          animState.caregiverRotY = 0;
+          animState.lungeStance = true;
+          animState.handsOnAbdomen = true;
+          animState.leftHandLocked = true;
+          upwardArrowGroup.visible = true;
+        } else if (stepNum === 6) {
+          // Step 6: Foreign body expelled! Recipient upright, arms relaxed, celebration stars
+          animState.recipientLean = 0;
+          animState.caregiverPos.set(-0.55, 0, -0.2);
+          animState.caregiverRotY = 0.65;
+          animState.lungeStance = false;
+          animState.handsOnAbdomen = false;
+          animState.leftHandLocked = false;
+          if (!animState.bolusExpelled) {
+            animState.bolusExpelled = true;
+            animState.bolusTime = 0;
+            bolusMesh.visible = true;
+          }
+          celebrationGroup.visible = true;
+        }
+      }
+
+      /* ----------------------------------------------------------------------
+       * 7. ANIMATION LOOP
+       * ---------------------------------------------------------------------- */
+      function animate() {
+        requestAnimationFrame(animate);
+        const dt = clock.getDelta();
+        const elapsed = clock.getElapsedTime();
+
+        if (!renderer || !scene || !camera) return;
+
+        // Smooth Caregiver Movement
+        caregiverGroup.position.lerp(animState.caregiverPos, 0.12);
+        caregiverGroup.rotation.y += (animState.caregiverRotY - caregiverGroup.rotation.y) * 0.12;
+
+        // Recipient Posture (Leaning forward in Step 1 vs Upright in Step 6)
+        const thrustRecoil = animState.thrustPulse > 0 ? Math.sin(animState.thrustPulse * Math.PI) * 0.08 : 0;
+        recipientTorso.rotation.x += (animState.recipientLean - thrustRecoil - recipientTorso.rotation.x) * 0.15;
+
+        // Recipient Arms (Clutching throat in Steps 1-5; relaxed at sides in Step 6)
+        const armL = recipientTorso.getObjectByName('recipientArmMeshL');
+        const armR = recipientTorso.getObjectByName('recipientArmMeshR');
+        if (armL && armR) {
+          if (STATE.currentStep === 6) {
+            armL.rotation.set(0, 0, 0.15);
+            armL.position.set(-0.04, -0.2, 0);
+            armR.rotation.set(0, 0, -0.15);
+            armR.position.set(0.04, -0.2, 0);
+          } else {
+            armL.rotation.set(1.1, 0, -0.75);
+            armL.position.set(0.08, -0.05, 0.16);
+            armR.rotation.set(1.1, 0, 0.75);
+            armR.position.set(-0.08, -0.05, 0.16);
+          }
+        }
+
+        // Caregiver Lunge Stance (弓箭步)
+        if (animState.lungeStance) {
+          caregiverLeftLeg.rotation.x += (-0.38 - caregiverLeftLeg.rotation.x) * 0.15; // Front leg forward
+          caregiverRightLeg.rotation.x += (0.42 - caregiverRightLeg.rotation.x) * 0.15; // Back leg braced
+          caregiverGroup.position.y += (-0.05 - caregiverGroup.position.y) * 0.15;
+        } else {
+          caregiverLeftLeg.rotation.x += (0 - caregiverLeftLeg.rotation.x) * 0.15;
+          caregiverRightLeg.rotation.x += (0 - caregiverRightLeg.rotation.x) * 0.15;
+          caregiverGroup.position.y += (0 - caregiverGroup.position.y) * 0.15;
+        }
+
+        // Caregiver Arms Animation (Back blow vs Abdominal wrap & upward thrust)
+        const rightForearm = caregiverRightArm.getObjectByName('rightForearm');
+        const leftForearm = caregiverLeftArm.getObjectByName('leftForearm');
+
+        if (animState.backBlowPulse > 0) {
+          animState.backBlowPulse = Math.max(0, animState.backBlowPulse - dt * 3.2);
+          const swing = Math.sin(animState.backBlowPulse * Math.PI);
+          caregiverRightArm.rotation.set(-1.1 - swing * 0.45, 0, -0.2);
+          if (rightForearm) rightForearm.rotation.set(-0.35, 0, 0);
+          caregiverLeftArm.rotation.set(0, 0, 0);
+          if (leftForearm) leftForearm.rotation.set(0, 0, 0);
+
+          backImpactRing.material.opacity = swing * 0.9;
+          const scale = 1 + (1 - animState.backBlowPulse) * 2.2;
+          backImpactRing.scale.set(scale, scale, 1);
+        } else if (animState.handsOnAbdomen) {
+          // Right-hand rule: Rotating a -Y limb around -X swings it forward toward +Z (recipient's front).
+          // Reach further forward (+Z) so both clasped hands emerge cleanly outside the recipient's abdomen!
+          const thrustLift = animState.thrustPulse > 0 ? Math.sin(animState.thrustPulse * Math.PI) * 0.14 : 0;
+
+          // Caregiver Right Arm (+X side): swing forward (-X) and slightly outward (+Z) to clear recipient's torso
+          caregiverRightArm.rotation.x += (-0.82 - thrustLift - caregiverRightArm.rotation.x) * 0.25;
+          caregiverRightArm.rotation.y += (0 - caregiverRightArm.rotation.y) * 0.25;
+          caregiverRightArm.rotation.z += (0.3 - caregiverRightArm.rotation.z) * 0.25;
+          // Right Forearm: reach forward (-X) and curve inward (-Z) right onto the green target ring at front abdomen
+          if (rightForearm) {
+            rightForearm.rotation.x += (-0.82 - rightForearm.rotation.x) * 0.25;
+            rightForearm.rotation.z += (-0.78 - rightForearm.rotation.z) * 0.25;
+          }
+
+          if (animState.leftHandLocked) {
+            // Caregiver Left Arm (-X side): swing forward (-X) and slightly outward (-Z) to clear recipient's torso
+            caregiverLeftArm.rotation.x += (-0.82 - thrustLift - caregiverLeftArm.rotation.x) * 0.25;
+            caregiverLeftArm.rotation.y += (0 - caregiverLeftArm.rotation.y) * 0.25;
+            caregiverLeftArm.rotation.z += (-0.3 - caregiverLeftArm.rotation.z) * 0.25;
+            // Left Forearm: reach forward (-X) and curve inward (+Z) so left hand clasps over right fist outside abdomen
+            if (leftForearm) {
+              leftForearm.rotation.x += (-0.86 - leftForearm.rotation.x) * 0.25;
+              leftForearm.rotation.z += (0.78 - leftForearm.rotation.z) * 0.25;
+            }
+          } else {
+            // Left arm relaxed at side while right fist locates two fingers above navel
+            caregiverLeftArm.rotation.x += (0 - caregiverLeftArm.rotation.x) * 0.18;
+            caregiverLeftArm.rotation.y += (0 - caregiverLeftArm.rotation.y) * 0.18;
+            caregiverLeftArm.rotation.z += (0 - caregiverLeftArm.rotation.z) * 0.18;
+            if (leftForearm) {
+              leftForearm.rotation.x += (0 - leftForearm.rotation.x) * 0.18;
+              leftForearm.rotation.z += (0 - leftForearm.rotation.z) * 0.18;
+            }
+          }
+        } else {
+          caregiverRightArm.rotation.x += (0 - caregiverRightArm.rotation.x) * 0.15;
+          caregiverRightArm.rotation.y += (0 - caregiverRightArm.rotation.y) * 0.15;
+          caregiverRightArm.rotation.z += (0 - caregiverRightArm.rotation.z) * 0.15;
+          if (rightForearm) {
+            rightForearm.rotation.x += (0 - rightForearm.rotation.x) * 0.15;
+            rightForearm.rotation.z += (0 - rightForearm.rotation.z) * 0.15;
+          }
+          caregiverLeftArm.rotation.x += (0 - caregiverLeftArm.rotation.x) * 0.15;
+          caregiverLeftArm.rotation.y += (0 - caregiverLeftArm.rotation.y) * 0.15;
+          caregiverLeftArm.rotation.z += (0 - caregiverLeftArm.rotation.z) * 0.15;
+          if (leftForearm) {
+            leftForearm.rotation.x += (0 - leftForearm.rotation.x) * 0.15;
+            leftForearm.rotation.z += (0 - leftForearm.rotation.z) * 0.15;
+          }
+          backImpactRing.material.opacity = 0;
+        }
+
+        if (animState.thrustPulse > 0) {
+          animState.thrustPulse = Math.max(0, animState.thrustPulse - dt * 3.0);
+        }
+
+        // Visual Guide Animations
+        if (warningRingMesh.visible) {
+          const pulse = 1 + Math.sin(elapsed * 5) * 0.08;
+          warningRingMesh.scale.set(pulse, pulse, 1);
+        }
+
+        if (targetAbdomenRing.visible) {
+          const tScale = 1 + Math.sin(elapsed * 6) * 0.15;
+          targetAbdomenRing.scale.set(tScale, tScale, 1);
+        }
+
+        if (backTargetGlowRing && backTargetGlowRing.visible) {
+          const bScale = 1 + Math.sin(elapsed * 6) * 0.16;
+          backTargetGlowRing.scale.set(bScale, bScale, 1);
+          backTargetGlowRing.material.opacity = STATE.mode === 'learning'
+            ? 0.92
+            : (isHoveringTarget ? 0.85 : 0.35);
+        }
+
+        if (upwardArrowGroup.visible) {
+          upwardArrowGroup.position.y = 1.08 + Math.sin(elapsed * 7) * 0.06;
+        }
+
+        // Step 6 Food Bolus Expulsion Arc
+        if (animState.bolusExpelled && bolusMesh.visible) {
+          animState.bolusTime = Math.min(1, animState.bolusTime + dt * 1.6);
+          const t = animState.bolusTime;
+          const startX = 0.15, startY = 1.48, startZ = 0.18;
+          const endX = 0.25, endY = 0.05, endZ = 0.72;
+          bolusMesh.position.x = startX + (endX - startX) * t;
+          bolusMesh.position.z = startZ + (endZ - startZ) * t;
+          bolusMesh.position.y = startY * (1 - t) + endY * t + Math.sin(t * Math.PI) * 0.35;
+        }
+
+        if (celebrationGroup.visible) {
+          celebrationGroup.rotation.y += dt * 1.4;
+        }
+
+        // Smooth Camera Orbit with User Drag Offset
+        const offset = animState.camPos.clone().sub(animState.camLook);
+        const spherical = new THREE.Spherical().setFromVector3(offset);
+        spherical.theta += userYawOffset;
+        spherical.phi = Math.max(0.35, Math.min(1.45, spherical.phi + userPitchOffset));
+        const desiredCamPos = animState.camLook.clone().add(new THREE.Vector3().setFromSpherical(spherical));
+
+        camera.position.lerp(desiredCamPos, 0.1);
+        camera.lookAt(animState.camLook);
+
+        renderer.render(scene, camera);
+      }
+
+      /* ----------------------------------------------------------------------
+       * 8. UI RENDERING & INTERACTION CONTROLLERS
+       * ---------------------------------------------------------------------- */
+      function renderStepProgressBar() {
+        const bar = document.getElementById('step-pill-bar');
+        bar.innerHTML = '';
+        for (let i = 1; i <= 6; i++) {
+          const pill = document.createElement('div');
+          const isDone = i < STATE.currentStep || (i === STATE.currentStep && STATE.stepCompleted);
+          const isCurrent = i === STATE.currentStep;
+
+          let cls = 'h-11 rounded-xl flex items-center justify-center font-black text-base md:text-lg border-2 transition-all ';
+          if (isDone) {
+            cls += 'bg-emerald-500 border-emerald-600 text-white shadow-sm';
+          } else if (isCurrent) {
+            cls += 'bg-teal-600 border-teal-800 text-white shadow-md scale-105';
+          } else {
+            cls += 'bg-slate-100 border-slate-300 text-slate-400';
+          }
+          pill.className = cls;
+          pill.textContent = isDone ? `✓${i}` : `${i}`;
+          bar.appendChild(pill);
+        }
+        document.getElementById('step-fraction-badge').textContent = `步驟 ${STATE.currentStep} / 6`;
+      }
+
+      function updateSpeechBubble(text, type) {
+        const bubble = document.getElementById('scene-speech-bubble');
+        const label = document.getElementById('scene-bubble-text');
+        label.textContent = text;
+
+        bubble.className = 'bubble-float absolute top-[22%] md:top-[20%] left-1/2 z-10 pointer-events-none bg-white/95 border-4 rounded-3xl px-5 py-2.5 shadow-xl text-center max-w-[88%] ';
+        label.className = 'text-lg md:text-2xl font-black tracking-wide ';
+
+        if (type === 'success') {
+          bubble.classList.add('border-emerald-500');
+          label.classList.add('text-emerald-700');
+        } else if (type === 'warning') {
+          bubble.classList.add('border-amber-500');
+          label.classList.add('text-amber-700');
+        } else if (type === 'info') {
+          bubble.classList.add('border-sky-500');
+          label.classList.add('text-sky-700');
+        } else {
+          bubble.classList.add('border-rose-500');
+          label.classList.add('text-rose-600');
+        }
+      }
+
+      function showFeedback(type, message) {
+        const banner = document.getElementById('feedback-banner');
+        const icon = document.getElementById('feedback-icon');
+        const text = document.getElementById('feedback-text');
+
+        banner.classList.remove('hidden', 'bg-emerald-50', 'border-emerald-400', 'text-emerald-900', 'bg-amber-50', 'border-amber-400', 'text-amber-900');
+        if (type === 'success') {
+          banner.classList.add('bg-emerald-50', 'border-emerald-400', 'text-emerald-900');
+          icon.textContent = '🌟';
+        } else {
+          banner.classList.add('bg-amber-50', 'border-amber-400', 'text-amber-900');
+          icon.textContent = '💡';
+        }
+        text.textContent = message;
+      }
+
+      function hideFeedback() {
+        document.getElementById('feedback-banner').classList.add('hidden');
+      }
+
+      function setNextButtonEnabled(enabled, labelText) {
+        const btn = document.getElementById('btn-next-step');
+        const span = document.getElementById('next-step-btn-text');
+        btn.disabled = !enabled;
+        span.textContent = labelText;
+
+        if (enabled) {
+          btn.className = 'btn-tactile min-h-[64px] w-full rounded-2xl font-black text-xl md:text-2xl shadow-lg transition-all bg-teal-600 hover:bg-teal-500 text-white border-b-4 border-teal-800 cursor-pointer flex items-center justify-center gap-2';
+        } else {
+          btn.className = 'btn-tactile min-h-[64px] w-full rounded-2xl font-black text-xl md:text-2xl shadow-md transition-all bg-slate-300 text-slate-500 cursor-not-allowed flex items-center justify-center gap-2';
+        }
+      }
+
+      function renderActionCounterZone(cfg) {
+        const zone = document.getElementById('action-counter-zone');
+        const scenePill = document.getElementById('scene-counter-pill');
+        const scenePillText = document.getElementById('scene-counter-text');
+        const directTapHint = document.getElementById('scene-direct-tap-hint');
+        const directTapText = document.getElementById('scene-direct-tap-text');
+
+        if (!cfg.hasCounterAction) {
+          zone.classList.add('hidden');
+          zone.classList.remove('flex');
+          scenePill.classList.add('hidden');
+          if (directTapHint) directTapHint.classList.add('hidden');
+          return;
+        }
+
+        zone.classList.remove('hidden');
+        zone.classList.add('flex');
+        scenePill.classList.remove('hidden');
+
+        const max = STATE.requiredReps;
+        const cur = STATE.actionCount;
+
+        if (directTapHint && directTapText) {
+          if (cur < max) {
+            directTapHint.classList.remove('hidden');
+            directTapText.textContent = cfg.step === 1
+              ? '👆 可直接點擊畫面中個案的「背部」或按右側按鈕'
+              : '👆 可直接點擊畫面中個案的「腹部」或按右側按鈕';
+          } else {
+            directTapHint.classList.add('hidden');
+          }
+        }
+
+        document.getElementById('action-zone-label').textContent = cfg.actionLabel;
+        document.getElementById('action-zone-count').textContent = `${cur} / ${max}`;
+        document.getElementById('action-btn-icon').textContent = cfg.actionBtnIcon;
+        document.getElementById('action-btn-text').textContent = cur >= max
+          ? `已完成 ${max} ${cfg.actionUnit}！`
+          : `${cfg.actionBtnVerb}（目前 ${cur} / ${max} ${cfg.actionUnit}）`;
+
+        scenePillText.textContent = `${cfg.step === 1 ? '拍背進度' : '按壓進度'}：${cur} / ${max} ${cfg.actionUnit}`;
+
+        const dotsRow = document.getElementById('action-dots-row');
+        dotsRow.innerHTML = '';
+        for (let i = 1; i <= max; i++) {
+          const dot = document.createElement('div');
+          const filled = i <= cur;
+          dot.className = filled
+            ? 'w-10 h-10 rounded-full bg-emerald-600 text-white font-black text-lg flex items-center justify-center shadow-sm scale-110 transition-transform'
+            : 'w-10 h-10 rounded-full bg-white border-2 border-emerald-300 text-emerald-700 font-bold text-lg flex items-center justify-center';
+          dot.textContent = filled ? '✓' : i;
+          dotsRow.appendChild(dot);
+        }
+
+        const actionBtn = document.getElementById('btn-perform-action');
+        if (cur >= max) {
+          actionBtn.disabled = true;
+          actionBtn.className = 'min-h-[68px] w-full bg-emerald-100 text-emerald-800 border-2 border-emerald-400 rounded-2xl font-black text-xl md:text-2xl flex items-center justify-center gap-3 cursor-default';
+        } else {
+          actionBtn.disabled = false;
+          actionBtn.className = 'btn-tactile min-h-[68px] w-full bg-emerald-600 hover:bg-emerald-500 text-white border-b-4 border-emerald-800 rounded-2xl shadow-lg font-black text-xl md:text-2xl flex items-center justify-center gap-3';
+        }
+      }
+
+      function loadStep(stepNum, autoSpeak = true) {
+        STATE.currentStep = stepNum;
+        STATE.stepCompleted = false;
+        STATE.actionCount = 0;
+
+        const cfg = getStepConfig(stepNum);
+        renderStepProgressBar();
+        hideFeedback();
+
+        document.getElementById('step-tag').textContent = `步驟 ${stepNum}`;
+        document.getElementById('step-title').textContent = cfg.title;
+        document.getElementById('step-question-text').textContent = cfg.question;
+        document.getElementById('strategy-hint-text').textContent = cfg.hint;
+
+        // Hint visibility based on mode
+        const hintBox = document.getElementById('strategy-hint-box');
+        if (STATE.mode === 'learning') {
+          hintBox.classList.remove('hidden');
+        } else {
+          hintBox.classList.add('hidden');
+        }
+
+        updateSpeechBubble(cfg.speechBubble, cfg.bubbleType);
+        setCameraPreset(cfg.camPreset);
+        sync3DToStep(stepNum, false);
+
+        // Prepare options (Shuffle in Challenge Mode)
+        let opts = [...cfg.options];
+        if (STATE.mode === 'challenge') {
+          for (let i = opts.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [opts[i], opts[j]] = [opts[j], opts[i]];
+          }
+        }
+
+        const choicesContainer = document.getElementById('choices-container');
+        choicesContainer.innerHTML = '';
+
+        opts.forEach((opt) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.dataset.optId = opt.id;
+          btn.dataset.correct = opt.correct ? '1' : '0';
+
+          let baseCls = 'choice-btn btn-tactile min-h-[64px] w-full text-left px-4 py-3.5 rounded-2xl border-2 font-bold text-lg md:text-xl shadow-sm transition-all flex items-center justify-between gap-2 ';
+          if (STATE.mode === 'learning' && opt.correct) {
+            baseCls += 'learning-highlight text-emerald-950';
+          } else {
+            baseCls += 'bg-white hover:bg-slate-50 border-slate-300 text-slate-800';
+          }
+          btn.className = baseCls;
+
+          const labelSpan = document.createElement('span');
+          labelSpan.textContent = opt.label;
+          btn.appendChild(labelSpan);
+
+          if (STATE.mode === 'learning' && opt.correct) {
+            const badge = document.createElement('span');
+            badge.className = 'shrink-0 text-xs md:text-sm font-black bg-emerald-600 text-white px-2.5 py-1 rounded-xl';
+            badge.textContent = '正確動作';
+            btn.appendChild(badge);
+          }
+
+          btn.addEventListener('click', () => handleOptionSelect(btn, opt, cfg));
+          choicesContainer.appendChild(btn);
+        });
+
+        // Hide action counter until the student selects the right option first
+        const actionZone = document.getElementById('action-counter-zone');
+        actionZone.classList.add('hidden');
+        actionZone.classList.remove('flex');
+        document.getElementById('scene-counter-pill').classList.add('hidden');
+        const directTapHint = document.getElementById('scene-direct-tap-hint');
+        if (directTapHint) directTapHint.classList.add('hidden');
+
+        setNextButtonEnabled(false, '請先選擇正確的做法');
+
+        if (autoSpeak && STATE.sessionStarted) {
+          speakTW(cfg.ttsPrompt, true);
+        }
+      }
+
+      function handleOptionSelect(btnEl, opt, cfg) {
+        if (!canInteract()) return;
+
+        if (!opt.correct) {
+          // Gentle non-punitive feedback
+          playChimeGentleRetry();
+          btnEl.classList.remove('animate-gentle-shake');
+          void btnEl.offsetWidth; // Reflow to restart animation
+          btnEl.classList.add('animate-gentle-shake', 'bg-amber-100', 'border-amber-500', 'text-amber-950');
+
+          // In Practice Mode, reveal strategy hint after a wrong try
+          if (STATE.mode === 'practice') {
+            document.getElementById('strategy-hint-box').classList.remove('hidden');
+          }
+
+          const msg = opt.retryHint || '再想一想喔！看看提示再試一次。';
+          showFeedback('retry', msg);
+          speakTW(msg, true);
+          return;
+        }
+
+        // Correct option selected!
+        playChimeSuccess();
+        document.querySelectorAll('.choice-btn').forEach(b => {
+          b.disabled = true;
+          b.classList.remove('learning-highlight');
+          if (b.dataset.correct === '1') {
+            b.className = 'choice-btn min-h-[64px] w-full text-left px-4 py-3.5 rounded-2xl border-4 border-emerald-500 bg-emerald-50 text-emerald-950 font-black text-lg md:text-xl shadow-md flex items-center justify-between gap-2';
+          } else {
+            b.className = 'choice-btn min-h-[64px] w-full text-left px-4 py-3.5 rounded-2xl border-2 border-slate-200 bg-slate-50 text-slate-400 font-bold text-lg md:text-xl opacity-60 flex items-center justify-between gap-2';
+          }
+        });
+
+        if (cfg.hasCounterAction) {
+          // Reveal interactive 5-tap action zone
+          if (cfg.step === 1) {
+            setCameraPreset('back');
+          } else if (cfg.step === 5) {
+            setCameraPreset('abdomen');
+          }
+          renderActionCounterZone(cfg);
+          const promptMsg = cfg.step === 1
+            ? `答對了！現在請直接點擊畫面中個案的「背部」，或按下方綠色按鈕拍背 ${STATE.requiredReps} 下！`
+            : `答對了！現在請直接點擊畫面中個案的「腹部」，或按下方綠色按鈕朝內朝上按壓 ${STATE.requiredReps} 次！`;
+          showFeedback('success', promptMsg);
+          speakTW(promptMsg, true);
+        } else {
+          // Single-action pose step completed immediately
+          STATE.stepCompleted = true;
+          renderStepProgressBar();
+          sync3DToStep(cfg.step, true);
+
+          if (cfg.step === 6) {
+            playChimeCelebration();
+            const scenario = SCENARIOS[STATE.currentCaseIndex % SCENARIOS.length];
+            const winMsg = `太棒了！${scenario.recipientName}已經把${scenario.foodName}吐出來，呼吸恢復順暢囉！`;
+            showFeedback('success', winMsg);
+            speakTW(winMsg, true);
+            setNextButtonEnabled(true, '完成本位個案急救 🎉');
+          } else {
+            const doneMsg = `做得很好！已完成「${cfg.title}」，請點選下方按鈕進入下一步。`;
+            showFeedback('success', doneMsg);
+            speakTW(doneMsg, true);
+            setNextButtonEnabled(true, `前往步驟 ${cfg.step + 1}`);
+          }
+        }
+      }
+
+      function isActionPhaseActive() {
+        const zone = document.getElementById('action-counter-zone');
+        return (
+          STATE.sessionStarted &&
+          !STATE.stepCompleted &&
+          (STATE.currentStep === 1 || STATE.currentStep === 5) &&
+          zone &&
+          !zone.classList.contains('hidden')
+        );
+      }
+
+      function getRayTargetsForCurrentStep() {
+        if (!isActionPhaseActive()) return [];
+        if (STATE.currentStep === 1) {
+          const shirtMesh = recipientTorso ? recipientTorso.getObjectByName('recipientShirtMesh') : null;
+          return [backHitBoxMesh, backTargetGlowRing, shirtMesh].filter(Boolean);
+        }
+        if (STATE.currentStep === 5) {
+          const shirtMesh = recipientTorso ? recipientTorso.getObjectByName('recipientShirtMesh') : null;
+          return [abdomenHitBoxMesh, targetAbdomenRing, upwardArrowGroup, shirtMesh].filter(Boolean);
+        }
+        return [];
+      }
+
+      function setPointerNDCFromClient(clientX, clientY) {
+        if (!renderer || !renderer.domElement) return false;
+        const rect = renderer.domElement.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return false;
+        pointerNDC.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+        pointerNDC.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+        return true;
+      }
+
+      function updateBodyHoverCursor(clientX, clientY) {
+        const wrapper = document.getElementById('three-canvas-wrapper');
+        if (!wrapper) return;
+        const targets = getRayTargetsForCurrentStep();
+        if (targets.length === 0 || !setPointerNDCFromClient(clientX, clientY)) {
+          isHoveringTarget = false;
+          wrapper.style.cursor = isDraggingCam ? 'grabbing' : 'grab';
+          return;
+        }
+        raycaster.setFromCamera(pointerNDC, camera);
+        const hits = raycaster.intersectObjects(targets, true);
+        isHoveringTarget = hits.length > 0;
+        wrapper.style.cursor = isHoveringTarget ? 'pointer' : (isDraggingCam ? 'grabbing' : 'grab');
+      }
+
+      function spawn3DTapPopBadge(clientX, clientY, labelText, colorClass) {
+        const container = document.getElementById('scene-tap-pop-container');
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        let leftPx = rect.width * 0.5;
+        let topPx = rect.height * 0.45;
+
+        if (typeof clientX === 'number' && typeof clientY === 'number') {
+          leftPx = Math.max(60, Math.min(rect.width - 60, clientX - rect.left));
+          topPx = Math.max(50, Math.min(rect.height - 50, clientY - rect.top));
+        }
+
+        const pop = document.createElement('div');
+        pop.className = `animate-tap-pop absolute px-4 py-1.5 rounded-2xl border-2 border-white shadow-xl font-black text-xl md:text-2xl text-white ${colorClass}`;
+        pop.style.left = `${leftPx}px`;
+        pop.style.top = `${topPx}px`;
+        pop.textContent = labelText;
+        container.appendChild(pop);
+
+        setTimeout(() => {
+          if (pop.parentNode) pop.parentNode.removeChild(pop);
+        }, 900);
+      }
+
+      function tryDirectBodyTap(clientX, clientY) {
+        if (!isActionPhaseActive()) return;
+        const targets = getRayTargetsForCurrentStep();
+        if (targets.length === 0 || !setPointerNDCFromClient(clientX, clientY)) return;
+
+        raycaster.setFromCamera(pointerNDC, camera);
+        const hits = raycaster.intersectObjects(targets, true);
+        if (hits.length > 0) {
+          handleRepeatedActionTap({ clientX, clientY });
+        }
+      }
+
+      function handleRepeatedActionTap(tapCoords) {
+        if (!canInteract()) return;
+        const cfg = getStepConfig(STATE.currentStep);
+        if (!cfg.hasCounterAction) return;
+
+        const max = STATE.requiredReps;
+        if (STATE.actionCount >= max) return;
+
+        STATE.actionCount += 1;
+        playChimeAction(STATE.actionCount, max);
+
+        const cx = tapCoords && typeof tapCoords.clientX === 'number' ? tapCoords.clientX : null;
+        const cy = tapCoords && typeof tapCoords.clientY === 'number' ? tapCoords.clientY : null;
+
+        if (STATE.currentStep === 1) {
+          animState.backBlowPulse = 1.0;
+          updateSpeechBubble(`用力咳出來！（${STATE.actionCount} / ${max} 下）`, 'warning');
+          spawn3DTapPopBadge(cx, cy, `+1 拍！（${STATE.actionCount}/${max}）`, 'bg-emerald-600');
+          speakTW(`第 ${STATE.actionCount} 下，用力咳出來！`, true);
+        } else if (STATE.currentStep === 5) {
+          animState.thrustPulse = 1.0;
+          updateSpeechBubble(`朝內朝上按壓！（${STATE.actionCount} / ${max} 次）`, 'warning');
+          spawn3DTapPopBadge(cx, cy, `+1 壓！（${STATE.actionCount}/${max}）`, 'bg-orange-500');
+          speakTW(`朝內朝上，第 ${STATE.actionCount} 次！`, true);
+        }
+
+        renderActionCounterZone(cfg);
+
+        if (STATE.actionCount >= max) {
+          STATE.stepCompleted = true;
+          if (backTargetGlowRing) backTargetGlowRing.visible = false;
+          renderStepProgressBar();
+          playChimeSuccess();
+
+          if (STATE.currentStep === 1) {
+            showFeedback('success', `已完成拍背 ${max} 下！如果異物還沒出來，請進入步驟 2 準備哈姆立克法。`);
+            speakTW(`已完成拍背${max}下！請點選下一步，站到個案背後。`, false);
+            setNextButtonEnabled(true, '前往步驟 2：站到背後弓箭步');
+          } else if (STATE.currentStep === 5) {
+            showFeedback('success', `已完成 ${max} 次快速朝內朝上按壓！異物已經被頂出來囉！`);
+            speakTW(`已完成${max}次按壓！異物被頂出來了，請點選下一步確認個案狀況。`, false);
+            setNextButtonEnabled(true, '前往步驟 6：個案吐出異物');
+          }
+        }
+      }
+
+      /* ----------------------------------------------------------------------
+       * 9. SESSION FLOW, TIMER & MODALS
+       * ---------------------------------------------------------------------- */
+      function startTimer() {
+        stopTimer();
+        STATE.timerSeconds = 0;
+        const timerBox = document.getElementById('hud-timer-box');
+        const timerText = document.getElementById('hud-timer-text');
+
+        if (STATE.mode === 'challenge') {
+          timerBox.classList.remove('hidden');
+        } else {
+          timerBox.classList.add('hidden');
+        }
+
+        timerText.textContent = '00:00';
+        STATE.timerInterval = setInterval(() => {
+          STATE.timerSeconds += 1;
+          const mins = String(Math.floor(STATE.timerSeconds / 60)).padStart(2, '0');
+          const secs = String(STATE.timerSeconds % 60).padStart(2, '0');
+          timerText.textContent = `${mins}:${secs}`;
+        }, 1000);
+      }
+
+      function stopTimer() {
+        if (STATE.timerInterval) {
+          clearInterval(STATE.timerInterval);
+          STATE.timerInterval = null;
+        }
+      }
+
+      function startCase(caseIndex) {
+        STATE.currentCaseIndex = caseIndex;
+        const scenario = SCENARIOS[caseIndex % SCENARIOS.length];
+
+        document.getElementById('hud-case-badge').textContent = `第 ${caseIndex + 1} / ${STATE.totalCases} 位個案`;
+        const modeNames = { learning: '學習模式', practice: '練習模式', challenge: '挑戰模式' };
+        document.getElementById('hud-mode-badge').textContent = modeNames[STATE.mode];
+        document.getElementById('hud-scenario-title').textContent = scenario.title;
+
+        applyScenarioVisuals();
+        loadStep(1, false);
+
+        const cfg = getStepConfig(1);
+        speakTW(`${scenario.introTTS} ${cfg.ttsPrompt}`, true);
+      }
+
+      function showCaseSummary() {
+        stopTimer();
+        const isLastCase = STATE.currentCaseIndex + 1 >= STATE.totalCases;
+        const scenario = SCENARIOS[STATE.currentCaseIndex % SCENARIOS.length];
+
+        const titleEl = document.getElementById('summary-title');
+        const descEl = document.getElementById('summary-desc');
+        const statsEl = document.getElementById('summary-stats');
+        const nextBtn = document.getElementById('btn-summary-next');
+
+        if (isLastCase) {
+          titleEl.textContent = '恭喜完成全部居家急救訓練！';
+          descEl.textContent = `你成功幫助了所有個案吐出異物，是一位冷靜又專業的居家照護小幫手！`;
+          const timeNote = STATE.mode === 'challenge' ? `（本次練習時間：${document.getElementById('hud-timer-text').textContent}）` : '';
+          statsEl.textContent = `全部 ${STATE.totalCases} 位個案皆已平安獲救 ${timeNote}`;
+          nextBtn.textContent = '回到首頁重新選擇 🏠';
+        } else {
+          titleEl.textContent = `太棒了！成功救回${scenario.recipientName}！`;
+          descEl.textContent = `${scenario.recipientName}已經順利吐出${scenario.foodName}並恢復順暢呼吸！`;
+          statsEl.textContent = `完成進度：第 ${STATE.currentCaseIndex + 1} / ${STATE.totalCases} 位個案`;
+          nextBtn.textContent = '下一位居家個案 ➡️';
+        }
+
+        document.getElementById('summary-modal').classList.remove('hidden');
+      }
+
+      /* ----------------------------------------------------------------------
+       * 10. EVENT LISTENERS BINDING
+       * ---------------------------------------------------------------------- */
+      function bindEvents() {
+        // Start Screen Mode Selection
+        document.querySelectorAll('.mode-select-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            STATE.mode = btn.dataset.mode;
+            document.querySelectorAll('.mode-select-btn').forEach(b => {
+              const selected = b.dataset.mode === STATE.mode;
+              b.className = selected
+                ? 'mode-select-btn btn-tactile min-h-[76px] p-3.5 rounded-2xl border-4 border-teal-500 bg-teal-50 text-left flex flex-col justify-center'
+                : 'mode-select-btn btn-tactile min-h-[76px] p-3.5 rounded-2xl border-2 border-slate-300 bg-white hover:bg-slate-50 text-left flex flex-col justify-center';
+            });
+          });
+        });
+
+        // Teacher Settings Drawer Toggle
+        document.getElementById('btn-toggle-teacher-settings').addEventListener('click', () => {
+          const drawer = document.getElementById('teacher-settings-drawer');
+          const arrow = document.getElementById('teacher-arrow');
+          const isHidden = drawer.classList.contains('hidden');
+          if (isHidden) {
+            drawer.classList.remove('hidden');
+            arrow.textContent = '▼';
+          } else {
+            drawer.classList.add('hidden');
+            arrow.textContent = '▶';
+          }
+        });
+
+        function updateTeacherSummaryTag() {
+          document.getElementById('teacher-summary-tag').textContent =
+            `${STATE.totalCases} 位個案 / ${STATE.requiredReps === 5 ? '標準 5 下' : '簡化 3 下'}`;
+        }
+
+        // Cases Count Selection
+        document.querySelectorAll('.cases-select-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            STATE.totalCases = parseInt(btn.dataset.cases, 10);
+            document.querySelectorAll('.cases-select-btn').forEach(b => {
+              const sel = parseInt(b.dataset.cases, 10) === STATE.totalCases;
+              b.className = sel
+                ? 'cases-select-btn min-h-[56px] rounded-xl border-4 border-teal-500 bg-teal-50 font-black text-base md:text-lg text-teal-900'
+                : 'cases-select-btn min-h-[56px] rounded-xl border-2 border-slate-300 bg-white font-bold text-base md:text-lg text-slate-700';
+            });
+            updateTeacherSummaryTag();
+          });
+        });
+
+        // Repetitions Selection
+        document.querySelectorAll('.reps-select-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            STATE.requiredReps = parseInt(btn.dataset.reps, 10);
+            document.querySelectorAll('.reps-select-btn').forEach(b => {
+              const sel = parseInt(b.dataset.reps, 10) === STATE.requiredReps;
+              b.className = sel
+                ? 'reps-select-btn min-h-[56px] px-3 rounded-xl border-4 border-teal-500 bg-teal-50 font-black text-base text-teal-900'
+                : 'reps-select-btn min-h-[56px] px-3 rounded-xl border-2 border-slate-300 bg-white font-bold text-base text-slate-700';
+            });
+            updateTeacherSummaryTag();
+          });
+        });
+
+        // Start Training Button
+        document.getElementById('btn-start-game').addEventListener('click', () => {
+          ensureAudioContext();
+          playChimeSuccess();
+          STATE.sessionStarted = true;
+          document.getElementById('start-overlay').classList.add('hidden');
+          startTimer();
+          startCase(0);
+        });
+
+        // Replay TTS Button
+        document.getElementById('btn-replay-tts').addEventListener('click', () => {
+          if (!canInteract()) return;
+          ensureAudioContext();
+          const cfg = getStepConfig(STATE.currentStep);
+          speakTW(cfg.ttsPrompt, true);
+        });
+
+        // Repeated Action Button (Step 1 Back Blows & Step 5 Abdominal Thrusts)
+        document.getElementById('btn-perform-action').addEventListener('click', () => handleRepeatedActionTap(null));
+
+        // Next Step Button
+        document.getElementById('btn-next-step').addEventListener('click', () => {
+          if (!canInteract() || !STATE.stepCompleted) return;
+          if (STATE.currentStep < 6) {
+            loadStep(STATE.currentStep + 1, true);
+          } else {
+            showCaseSummary();
+          }
+        });
+
+        // Summary Modal Next / Finish Button
+        document.getElementById('btn-summary-next').addEventListener('click', () => {
+          if (!canInteract()) return;
+          document.getElementById('summary-modal').classList.add('hidden');
+          if (STATE.currentCaseIndex + 1 < STATE.totalCases) {
+            startTimer();
+            startCase(STATE.currentCaseIndex + 1);
+          } else {
+            STATE.sessionStarted = false;
+            document.getElementById('start-overlay').classList.remove('hidden');
+          }
+        });
+
+        // Top-Right Utility Buttons
+        document.getElementById('btn-open-sop').addEventListener('click', () => {
+          document.getElementById('sop-modal').classList.remove('hidden');
+        });
+        document.getElementById('btn-close-sop').addEventListener('click', () => {
+          document.getElementById('sop-modal').classList.add('hidden');
+        });
+        document.getElementById('btn-close-sop-bottom').addEventListener('click', () => {
+          document.getElementById('sop-modal').classList.add('hidden');
+        });
+
+        document.getElementById('btn-toggle-audio').addEventListener('click', () => {
+          STATE.audioEnabled = !STATE.audioEnabled;
+          const icon = document.getElementById('audio-icon');
+          const label = document.getElementById('audio-label');
+          if (STATE.audioEnabled) {
+            icon.textContent = '🔊';
+            label.textContent = '語音開啟';
+            ensureAudioContext();
+            playChimeSuccess();
+          } else {
+            icon.textContent = '🔇';
+            label.textContent = '語音靜音';
+            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+          }
+        });
+
+        document.getElementById('btn-open-home').addEventListener('click', () => {
+          document.getElementById('home-confirm-modal').classList.remove('hidden');
+        });
+        document.getElementById('btn-cancel-home').addEventListener('click', () => {
+          document.getElementById('home-confirm-modal').classList.add('hidden');
+        });
+        document.getElementById('btn-confirm-home').addEventListener('click', () => {
+          stopTimer();
+          STATE.sessionStarted = false;
+          if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+          document.getElementById('home-confirm-modal').classList.add('hidden');
+          document.getElementById('start-overlay').classList.remove('hidden');
+        });
+
+        // Camera Angle Presets
+        document.querySelectorAll('.cam-preset-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            setCameraPreset(btn.dataset.cam);
+          });
+        });
+      }
+
+      /* ----------------------------------------------------------------------
+       * 11. BOOTSTRAP ON WINDOW LOAD
+       * ---------------------------------------------------------------------- */
+      window.onload = function () {
+        initThreeScene();
+        bindEvents();
+        loadStep(1, false);
+        animate();
+      };
+    })();
+  </script>
+</body>
+</html>
